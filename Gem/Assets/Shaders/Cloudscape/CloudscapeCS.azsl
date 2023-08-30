@@ -1,0 +1,756 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+#include <scenesrg.srgi>
+#include <viewsrg.srgi>
+
+#include <Atom/RPI/Math.azsli>
+#include <Atom/Features/ScreenSpace/ScreenSpaceUtil.azsli>
+
+#include "CloudscapeCommon.azsli"
+
+ShaderResourceGroup PassSrg : SRG_PerPass
+{
+    // FIXME: Make this a shader constant in the range 0 to 1
+    static const float m_dualLobePhaseFunctionWeight = 0.75;
+
+    // A number from 0 .. 15. Defines the pixel index
+    // within each 4x4 block that will be ray marched in this frame. 
+    uint m_pixelIndex4x4;
+
+    // Used to scale world position XYZ when sampling
+    // the Noise Textures during ray marching.
+    float m_uvwScale; // = 0.25;
+
+    // Number of mip levels available in the low frequency
+    // texture. The low frequency texture is assumed to be larger
+    // than the high frequency noise texture.
+    // typically the low freq texture is 128,128,128
+    // and the high freq is 32,32,32.
+    // When sampling the high frequency texture we subtract 2
+    // from the mip level chosen when sampling the low freq texture. 
+    uint m_maxMipLevels;
+
+    // The Ray Marching Steps impact performance greatly.
+    // See the following results from an NVIDIA 4090 RTX @2560x1440:
+    // For 6 light integration steps:
+    // Min Steps 64, Max Steps 96, 529,408ns
+    // Min Steps 64, Max Steps 96, 524,288ns
+    // Min Steps 48, Max Steps 96, 520,192ns - No visual degradation
+    // Min Steps 48, Max Steps 96, 512,000ns - No Visual degradation
+    // Min Steps 32, Max Steps 64, 397,312ns - No Visual degradation
+    // Min Steps 32, Max Steps 64, 388,096ns - No Visual degradation
+    // Min Steps 24, Max Steps 48, 316,416ns - No Visual degradation
+    // Min Steps 24, Max Steps 48, 314,368ns - No Visual degradation
+    // Min Steps 16, Max Steps 32, 238,592ns - tiny bit of banding at long distance
+    // Min Steps 16, Max Steps 32, 249,856ns - tiny bit of banding at long distance
+    // Min Steps  8, Max Steps 16, 166,912ns - little bit of banding starting at mid distance
+    // Min Steps  8, Max Steps 16, 162,816ns - little bit of banding starting at mid distance 
+    // Minimum number of ray marching steps used to calculate transmittance.
+    // For practical purposes should never be less than 8.
+    // Value 24 gives decent results.
+    uint m_minRayMarchingSteps;
+    // Maximum number of ray marching steps used to calculate transmittance.
+    // For practical purposes should never be more than than 128.
+    // Value 48 gives decent results.
+    uint m_maxRayMarchingSteps;
+
+    // Planetary data
+    [[pad_to(16)]]
+    float m_planetRadiusKm;// = 6371;
+    float m_cloudSlabDistanceAboveSeaLevelKm;// = 1.5;
+    float m_cloudSlabThicknessKm;// = 3.5;
+
+    [[pad_to(16)]]
+    float4 m_sunColorAndIntensity; //rgb is color. alpha is intensity factor.
+    float4 m_ambientLightColorAndIntensity; //rgb is color. alpha is intensity factor.
+    // Direction towards the sun is expected to be normalized.
+    float3 m_directionTowardsTheSun;
+
+    [[pad_to(16)]]
+    // NOTE: Beer's Law Attenuation Coefficient = Absorption + Scattering coefficients.
+    // Attenuation coefficient is typically 0.04[m-1] for clouds.
+    // For clouds, Scattering coeffcient is typically 3x Absorption coeffcient.
+    // Beer's Law Absorption coefficient. in units [Km-1] == [1/Km].
+    // Typically it is in units of [m-1], but we use Km in all calculations
+    // in this shader. 
+    // Absortion coefficient, for clouds, is typically 0.01[m-1] == 10[Km-1]
+    float m_aCoef;// = 200;
+    // Beer's Law Scattering coeffcient. in units [Km-1] == [1/Km].
+    // Typically it is in units of [m-1], but we use Km in all calculations
+    // in this shader. 
+    // For clouds it is typically 3x(Absorption coefficient) 0.03[m-1] == 30[Km-1]
+    float m_sCoef;// = 3.0 * m_aCoef;
+    // Excentricity constant in HenyeyGreenstein phase function. Typically 0.2.
+    // A number between [-1,1]. The bigger it is the more forward scattering.
+    float m_henyeyGreensteinG;// = 0.2; 
+
+    // These are the a, b, c coefficients that will be used
+    // to modulate each multi scaterring octave of light contribution
+    // as proposed in the paper "Oz: The Great and Volumetric"
+    // http://magnuswrenninge.com/wp-content/uploads/2010/03/Wrenninge-OzTheGreatAndVolumetric.pdf
+    // a: Attenuation that affects the optical depth in Beer's Law evaluation.
+    // b: Contribution to the scattering coefficient.
+    // c: Excentricity Attenuation to the excentricity constant "g" (see @m_henyeyGreensteinG above).
+    [[pad_to(16)]]
+    float3 m_multipleScatteringABC;
+
+    // Weather Data modulators
+    [[pad_to(16)]]
+    float m_weatherMapSizeKm;// = 60;
+    float m_globalCloudCoverage;// = 0.40;
+    float m_globalCloudDensity;// = 0.5;
+    float m_windSpeedKmPerSec; // Km/sec
+    float3 m_windDirection;
+    // Pushes the top of the clouds along the wind direction by this
+    // distance. Useful for dramatic/artistic effects.
+    float m_cloudTopOffsetKm;
+
+    Texture2D<float2> m_depthStencilTexture;
+    Sampler ClampPointSampler
+    {
+        MinFilter = Point;
+        MagFilter = Point;
+        MipFilter = Point;
+        AddressU = Clamp;
+        AddressV = Clamp;
+        AddressW = Clamp;
+    };
+
+    Texture3D<float4> m_lowFreqNoiseTexture;
+    Texture3D<float4> m_highFreqNoiseTexture;
+
+    // About the weather map:
+    // R: Low coverage map.
+    // G: High coverage map. Kicks in when m_globalCloudCoverage > 0.5.
+    // B: Peak height.
+    // A: density
+    Texture2D<float4> m_weatherMap;
+    Sampler WrapLinearSampler
+    {
+        MinFilter = Linear;
+        MagFilter = Linear;
+        MipFilter = Linear;
+        AddressU = Wrap;
+        AddressV = Wrap;
+        AddressW = Wrap;
+    };
+
+    // We write to only one of these two textures every other frame.
+    RWTexture2D<float4> m_cloudscapeOut[2];
+
+    uint GetOutputTextureIndex()
+    {
+        // FIXME: For now always texture 0 until we add reprojection pass.
+        //return 0;
+        return (uint)fmod(m_pixelIndex4x4, 2);
+    }
+
+    //bool IsRayMarchedPixel(uint2 pixelLoc)
+    //{
+    //    // 1280 x 720
+    //    // 1280 / 4 = 320
+    //    // 720 / 4 = 180
+//
+    //    // 323 x 72
+    //    // 323 / 4 = 80.75
+    //    //    80 * 4 = 320. ModX = 3
+    //    // 72 / 4 = 18
+    //    //    18 * 4 = 72. ModY = 0
+    //    // pixelIndex4x4 = ModY * 4 + ModX = 0 * 4 + 3 = 3
+//
+    //    // 323 x 74
+    //    // 323 / 4 = 80.75
+    //    //    80 * 4 = 320  . ModX = 3
+    //    // 74 / 4 = 18.5
+    //    //    18 * 4 = 72. ModY = 2
+    //    // pixelIndex4x4 = ModY * 4 + ModX = 2 * 4 + 3 = 11
+//
+    //    //     320, 321, 322, 323
+    //    //  72   0    1    2    3
+    //    //  73   4    5    6    7
+    //    //  74   8    9   10   11
+    //    //  75  12   13   14   15  
+//
+    //    const uint blockX = pixelLoc.x >> 2;
+    //    const uint modX = pixelLoc.x - (blockX * 4);
+    //    const uint blockY = pixelLoc.y >> 2;
+    //    const uint modY = pixelLoc.y - (blockY * 4);
+//
+    //    const uint pixelIndex4x4 = modY * 4 + modX;
+    //    const uint transformedPixelIndex4x4 = GetTransformed4x4PixelIndex(m_pixelIndex4x4);
+    //    
+    //    return pixelIndex4x4 == transformedPixelIndex4x4;
+    //}
+
+    // This helper function calculates the corresponding
+    // XY location within a 4x4 block of pixels.
+    uint2 GetPixelBlockXY()
+    {
+
+        const uint pixelIndex4x4 = GetTransformed4x4PixelIndex(m_pixelIndex4x4);
+        const uint rowIdx = pixelIndex4x4 >> 2;
+        const uint colIdx = pixelIndex4x4 - (rowIdx << 2);
+        return uint2(colIdx, rowIdx);
+    }
+
+    float3 GetScaledSunColor()
+    {
+        return m_sunColorAndIntensity.rgb * m_sunColorAndIntensity.a;
+    }
+
+    float3 GetAmbientLightColor(float heightFraction)
+    {
+        const float4 ambientColorAndIntensity = m_ambientLightColorAndIntensity * m_sunColorAndIntensity;
+        const float3 ambientColor = ambientColorAndIntensity.rgb * ambientColorAndIntensity.a;
+        return lerp(ambientColor, ambientColor * 10.0, saturate(heightFraction));
+    }
+
+    float4 GetWeatherData(float3 worldPosKm)
+    {
+        const float halfWorldSizeKm = m_weatherMapSizeKm * 0.5;
+        const float2 uv = float2(1.0 + (worldPosKm.x - halfWorldSizeKm) / m_weatherMapSizeKm,
+                                 1.0 + (worldPosKm.y - halfWorldSizeKm) / m_weatherMapSizeKm);
+        return PassSrg::m_weatherMap.SampleLevel(PassSrg::WrapLinearSampler, uv, 0);
+    }
+
+    // Returns a value between 0 and 1 of the height of the point within
+    // the cloud slab thichness.
+    float GetHeightFraction(float3 worldPosKm)
+    {
+        // This function assumes the center of the world is 0, 0, 0 (sphere center)
+        const float innerSphereRadiusKm = m_planetRadiusKm + m_cloudSlabDistanceAboveSeaLevelKm;
+        const float outerSphereRadiusKm = innerSphereRadiusKm + m_cloudSlabThicknessKm;
+        return (length(worldPosKm /*- sphereCenter*/) - innerSphereRadiusKm) / (outerSphereRadiusKm - innerSphereRadiusKm);
+    }
+
+    // Returns a modified version of worldPosKm that considers wind effects.
+    float3 ApplyWindEffect(float3 worldPosKm, float heightFraction)
+    {
+        // Skew in wind direction.
+        worldPosKm += heightFraction * m_windDirection * m_cloudTopOffsetKm;
+        
+        // Animate clouds in wind direction with a small bias upwards.
+        const float deltaTime = SceneSrg::m_time;// - SceneSrg::m_prevTime;
+        const float3 windDirection = m_windDirection + float3(0, 0.0, 0.1);
+        worldPosKm += windDirection * deltaTime * m_windSpeedKmPerSec;
+
+        return worldPosKm;
+    }
+
+    // Should be called once per pixel.
+    float CalcHenyeyGreenstein(float3 viewDirection, float g)
+    {
+        // Calculate henyeyGreenstein, which needs the cosine of the angle between the view and the
+        // direction towards the sun light.
+        const float cosAngle = dot(m_directionTowardsTheSun, viewDirection);
+        const float g2 = g * g;
+        #define INV_4PI (1.0/(4*3.141590))
+        // FIXME/TODO: Do Schlick approximation.
+        const float denom = 1 + g2 - 2 * g * cosAngle;
+        // We are doing denom*denom*sqrt(denom) instead of pow(denom, 1.5)
+        const float henyeyGreenstein = (1 - g2) / (denom * denom * sqrt(denom)) * INV_4PI;
+        return  henyeyGreenstein;
+    }
+
+
+    // excentricityAttenuationOctave is the value of c^i, where i is the octave number 
+    // as described in the multiscattering approximation per Magnus Wrenninge, et al in
+    // the "Oz" paper (look for the link below).
+    float CalcDualLobePhaseFunction(float3 viewDirection, float excentricityAttenuationOctave)
+    {
+        const float forwardPhase = CalcHenyeyGreenstein(viewDirection, excentricityAttenuationOctave * m_henyeyGreensteinG);
+        // FIXME: Add backward constant.
+        const float backwardG = -m_henyeyGreensteinG * 0.25;
+        const float backwardPhase = CalcHenyeyGreenstein(viewDirection, excentricityAttenuationOctave * backwardG);
+        return lerp(forwardPhase, backwardPhase, m_dualLobePhaseFunctionWeight);
+    }
+}
+
+
+// Utility function that maps a value from one range to another.
+// From GPU Pro 7. Chapter 4
+static float Remap(float value, float oldMin, float oldMax, float newMin, float newMax)
+{
+    return (((value - oldMin) / (oldMax - oldMin)) * (newMax - newMin)) + newMin;
+}
+
+
+// @param heightFraction A value between 0.0 and 1.0. 0.0 means that @worldPosKm is exactly touching the
+//        inner sphere of the cloud slab, and 1.0 means that @worldPosKm is touching the outer sphere of the
+//        cloud slab.
+float SampleCloudDensity(float3 worldPosKm, float uvwScale, float mipLevel, float heightFraction, bool sampleHighFreqNoise)
+{
+    worldPosKm = PassSrg::ApplyWindEffect(worldPosKm, heightFraction);
+
+    // This is very important when sampling the Texture3D. Even though
+    // we have a WRAP sampler, we should not use the @worldPosKm directly
+    // because we endup sampling from very "distant" points within the Texture3D.
+    // We need to normalize/scale the @worldPosKm into numbers closer to 0.0 and 1.0
+    // for nicer/smoother sampling of the Texture3D.
+    const float3 wps= worldPosKm;// - float3(0, 0, PassSrg::m_planetRadiusKm + PassSrg::m_cloudSlabDistanceAboveSeaLevelKm);
+    float3 uvw = wps.xyz * uvwScale;
+
+    const float4 lowFreqNoises = PassSrg::m_lowFreqNoiseTexture.SampleLevel(PassSrg::WrapLinearSampler, uvw, mipLevel);
+    const float lowFreqFBM = lowFreqNoises.g * 0.625
+                     + lowFreqNoises.b * 0.25
+                     + lowFreqNoises.a * 0.125;
+    float shapeNoiseSample = Remap(lowFreqNoises.r,  lowFreqFBM - 1.0, 1.0, 0.0, 1.0);
+
+    //float cloudCoverage = weatherData.x;
+    ////Apply coverage.
+    ////float baseCloudWithCoverage = Remap(baseCloud, cloudCoverage, 1.0, 0.0, 1.0);
+    ////baseCloudWithCoverage *= cloudCoverage;
+//
+    ////float baseCloud = lowFreqNoises.r;
+    //float densityHeightGradient = GetDensityHeightGradient(worldPos, weatherData, atmosphereIntersectionPos);
+    //float baseCloudWithCoverage = baseCloud * densityHeightGradient * 1.0;
+//
+    //return baseCloudWithCoverage * cloudCoverage;
+
+    const float4 weatherData = PassSrg::GetWeatherData(worldPosKm);
+
+    float shapeRemapBottom = saturate(Remap(heightFraction, 0.0, 0.070, 0.0, 1.0));
+    const float cloudMaxHeight = weatherData.b;
+    float shapeRemapTop = saturate(Remap(heightFraction, cloudMaxHeight * 0.20, cloudMaxHeight, 1.0, 0.0));
+    float shapeAltering = shapeRemapBottom * shapeRemapTop;
+
+
+    float densityRemapBottom = heightFraction * saturate(Remap(heightFraction, 0.0, 0.15, 0.0, 0.10));
+    float densityRemapTop = saturate(Remap(heightFraction, 0.9, 1.0, 1.0, 0.0));
+    const float wheaterMapDensity = weatherData.a;
+    float densityAlteration = PassSrg::m_globalCloudDensity * densityRemapBottom * densityRemapTop * wheaterMapDensity * 2.0;
+
+
+    float weatherMapCoverage = max(weatherData.r, saturate(PassSrg::m_globalCloudCoverage - 0.5) * weatherData.g * 2.00);
+
+    float result = saturate(Remap(shapeNoiseSample*shapeAltering, 1.0 - PassSrg::m_globalCloudCoverage*weatherMapCoverage, 1.0, 0.0, 1.0));
+    if (sampleHighFreqNoise)
+    {
+        // FIXME: We sample "gba" instead of "rgba" because "r" channel contains perlin worley noise, and we only
+        // need the worley noise. 
+        const float3 highFreqNoise = PassSrg::m_highFreqNoiseTexture.SampleLevel(PassSrg::WrapLinearSampler, uvw, max(mipLevel - 2.0, 0.0)).gba;
+        const float highFreqFBM = highFreqNoise.r * 0.625
+                     + highFreqNoise.g * 0.25
+                     + highFreqNoise.b * 0.125;
+        // Per Haggstrom: The entire influence of the detail noise is reduced to be maximum 0.35,
+        // with exp(−gc×0.75) the influence is reduced with the global coverage,
+        // and the linear interpolation ensures that clouds are more
+        // fluffy towards the base and more billowy towards the peak.
+        const float highFreqNoiseModified = 0.35*exp(-PassSrg::m_globalCloudCoverage*0.75)*lerp(highFreqFBM, 1.0-highFreqFBM,saturate(heightFraction * 1.0));
+        //const float sampleNoiseNoDetail = saturate(Remap(shapeNoiseSample*shapeAltering, 1.0 - PassSrg::m_globalCloudCoverage*weatherMapCoverage, 1.0, 0.0, 1.0));
+        result = saturate(Remap(result, highFreqNoiseModified, 1, 0, 1));
+    }
+
+    return result * densityAlteration;
+}
+
+
+// This function is based on three recommendations:
+// 1- From "Oz: The Great and Volumetric"
+//    http://magnuswrenninge.com/wp-content/uploads/2010/03/Wrenninge-OzTheGreatAndVolumetric.pdf
+//    The suggestion is to simulate up to N octaves of in-scattered light.
+// 2- From "Physically Based Sky, Atmosphere and Cloud Rendering in Frostbite"
+//    https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/s2016-pbs-frostbite-sky-clouds-new.pdf
+//    a. The result of this function will be used in an energy-conserving integration function.
+//    b. When ray matching towards the sun, we should sample in increasing step lengths.
+// 3- From GPU Pro 7. Real-Time Voumetric Cloudscapes.
+//    a. Use cone sampling of increasing radius.
+//    b. Powder Sugar effect.
+float3 GetMultiScatteredLuminance(float3 rayWorldPosKm, float stepSizeKm, float3 viewDirection)
+{
+    // REMARK: On an NVDIA 4090 RTX, at 2560x1440 resolution I benchmarked at different
+    // light integration steps:
+    // Steps 8. 546,816ns
+    // Steps 8. 556,032ns
+    // Steps 6. 497,664ns
+    // Steps 6. 522,240ns
+    // Steps 4. 517,120ns
+    // Steps 4. 515,072ns
+    // Steps 2. 473,088ns
+    // Steps 2. 481,280ns
+    // There's a perceivable quality between 6 and 4, but not between 6 and 8.
+    // This define may be exposed as a shader option, but for a 4090 it wouldn't make much of a difference.
+    #define NUM_LIGHT_SAMPLES (6)
+
+    // Cone sampling random offsets.
+    // Generated using the script VolumetricClouds/Gem/Editor/Scripts/cone_noise_kernel_gen.py
+    // CAVEAT: This array would work with up to 12 light samples. Make sure NUM_LIGHT_SAMPLES is
+    // less than 12.
+    static const float3 NOISE_KERNEL[12] = {
+        float3(0.82948634, -0.47047977, 0.30100033),
+        float3(-0.63479043, -0.20974313, 0.74367259),
+        float3(-0.84602539, -0.10106155, -0.52347646),
+        float3(0.21666301, 0.86326400, 0.45588640),
+        float3(0.08032086, 0.86948881, 0.48737847),
+        float3(-0.81387245, -0.57331667, 0.09444381),
+        float3(0.56074663, 0.63942210, 0.52602527),
+        float3(-0.84755565, -0.10328429, -0.52055910),
+        float3(-0.70260971, 0.70208185, -0.11584761),
+        float3(0.45503186, 0.22278661, -0.86215551),
+        float3(0.97105420, -0.16351118, -0.17412016),
+        float3(-0.40700059, -0.25467177, -0.87720739),
+    };
+
+    float3 samplePosKm = rayWorldPosKm;
+    float rayStepSizeKm = stepSizeKm;
+    const float3 directionTowardsTheSun = PassSrg::m_directionTowardsTheSun;
+
+	float opticalDepth = 0;
+    const float eCoef = PassSrg::m_aCoef + PassSrg::m_sCoef;
+
+	// Ray march towards the sun for STEP_COUNT steps, while sampling within a Cone shaped
+    // volume.  
+    int distanceMultipler = 1; //Makes sure we sample in increasing step length increments.
+    float mipLevel = 0;
+	for (int stepIdx = 0; stepIdx < NUM_LIGHT_SAMPLES; stepIdx++)
+	{
+
+        const float3 randomDirection = normalize(directionTowardsTheSun + NOISE_KERNEL[stepIdx] * 0.1);
+        const float lightStepDistance = rayStepSizeKm * distanceMultipler;
+		float3 posInConeKm = rayWorldPosKm + randomDirection * lightStepDistance;
+        float heightFraction = PassSrg::GetHeightFraction(posInConeKm);
+		if(heightFraction <= 1.00)
+		{
+            // Only if we are inside the cloud formation spherical slab, we'll do calculations. 
+			// Always sample cheaply.
+			float sampledCloudDensity = SampleCloudDensity(posInConeKm, PassSrg::m_uvwScale, mipLevel, heightFraction, false);// float(stepIdx + 1) LOD);
+			if(sampledCloudDensity > 0)
+			{
+                opticalDepth += sampledCloudDensity * lightStepDistance * eCoef;
+			}
+		}
+
+        distanceMultipler *= 2; // Doubling at each step makes a huge difference.
+        mipLevel += 1.0;
+	}
+
+    const float3 sunColor = PassSrg::GetScaledSunColor();
+    float3 luminance = 0.0;
+    // In movies, per original "Oz" paper N (number of octaves) was used at value 8.
+    // For games, 3 octaves should suffice.
+    #define MAX_OCTAVES (3)
+    const float3 abc = PassSrg::m_multipleScatteringABC;
+    float3 powABC = float3(1, 1, 1);
+    for (int N = 0; N < MAX_OCTAVES; N++)
+    {
+        // Beer Law
+        const float powA = powABC.x;
+        const float attenuatedTransmittance = exp(-powA*opticalDepth);
+
+        // Powder sugar
+        const float powderSugar = 1.00; //2 * (1.0 - exp(-powA*opticalDepth * 2));
+
+        const float powB = powABC.y;
+        const float scatteringContribution = PassSrg::m_sCoef * powB;
+
+        const float powC = powABC.z;
+        const float dualLobeHG = PassSrg::CalcDualLobePhaseFunction(viewDirection, powC);
+
+        const float3 octaveLuminance = scatteringContribution * sunColor * dualLobeHG * (attenuatedTransmittance * powderSugar);
+        luminance += octaveLuminance; 
+        
+        powABC *= abc;
+    }
+
+    // FIXME: Add a little bit more of scattering??
+    return luminance;
+}
+
+
+struct AtmosphereIntersectionInfo
+{
+    // The starting position in world coordinates
+    // where the view ray hits the Inner Sphere.
+    float3 m_rayMarchStartPosKm;
+    // Maximum distance that we should ray march starting at @m_rayMarchStartPosKm
+    // and in the direction of @m_rayDirection.
+    // Assuming there's no obstruction, this variable will be PassSrg::m_cloudSlabThicknessKm+
+    // For example, when looking straight above then it will be PassSrg::m_cloudSlabThicknessKm, as We look
+    // into the horizon this distance grows.
+    float m_rayMarchDistanceKm;
+    float3 m_rayDirection;
+    // Distance from camera position in the direction of @m_rayDirection
+    // that reaches the beginning of the cloud slab (inner sphere).
+    float m_distanceFromCameraToInnerSphereKm;
+};
+
+
+// FIXME/TODO: What to do if the position is inside the cloud slab?
+// 
+// The clouds exist withing a thick spherical slab that surrounds the earth.
+// There will be an Inner Sphere and an Outer Sphere. The difference in radius between
+// these two spheres will define the thickness of the volume where the clouds may be present.
+// This function returns true if there's line of sight between the current camera position (along the view direction)
+// and the Inner Sphere. All relevant information is cached in the  AtmosphereIntersectionInfo struct.
+bool GetCloudSlabIntersections(const float2 pixUV, inout AtmosphereIntersectionInfo intersectionResults, inout bool isCloudPixelBlocked)
+{
+    const float zDepth = PassSrg::m_depthStencilTexture.SampleLevel(PassSrg::ClampPointSampler, pixUV, 0).r;
+    const float3 pixelPosWS = WorldPositionFromDepthBuffer(pixUV, zDepth).xyz;
+    const float3 pixelViewVec = pixelPosWS - ViewSrg::m_worldPosition;
+    const float distanceToPixel = length(pixelViewVec);
+    const float3 rayDirection = pixelViewVec / distanceToPixel;
+
+    float3 cameraPositionKm = ViewSrg::m_worldPosition * 0.001;
+    cameraPositionKm.z += PassSrg::m_planetRadiusKm; // An approximation.
+
+    const float atmosphereInnerRadiusKm = PassSrg::m_planetRadiusKm +  PassSrg::m_cloudSlabDistanceAboveSeaLevelKm;
+
+    // The atmosphere is the region between two concentric spheres centered at world origin.
+    // the clouds will only form within the atmosphere.
+    // We need to calculate the position, in the ray direction where we touch the inner sphere.
+    const float3 earthCenter = 0;
+    //const float atmosphereInnerRadius = 500.0; // Move to PassSrg
+    const float distanceToInnerSphereKm = RaySphereClosestHitWS(earthCenter, atmosphereInnerRadiusKm, cameraPositionKm, rayDirection);
+    if (distanceToInnerSphereKm < 0.00)
+    {
+        return false;
+    }
+
+    const float distanceToOuterSphereKm = RaySphereClosestHitWS(earthCenter, atmosphereInnerRadiusKm + PassSrg::m_cloudSlabThicknessKm, cameraPositionKm, rayDirection);
+    float rayMarchDistanceKm = distanceToOuterSphereKm - distanceToInnerSphereKm;
+    // REMARK: ViewSrg::GetNearZ() is the far Z because the O3DE Shader APIs are based on
+    // reverse depth.
+    const float farZ = ViewSrg::GetNearZ();
+    isCloudPixelBlocked = false;
+    if (distanceToPixel < farZ)
+    {
+        // If the distanceToPixel is less than the farZ then the view ray is intersecting something.
+        float rayMarchDistanceKm2 = min( (distanceToPixel/1000.0) - distanceToInnerSphereKm, rayMarchDistanceKm);
+        // if (rayMarchDistanceKm <= 0.0)
+        // {
+        //     return false;
+        // }
+        isCloudPixelBlocked = (rayMarchDistanceKm2 <= 0.00);
+    }
+
+    const float3 rayMarchStartPosKm = cameraPositionKm + distanceToInnerSphereKm * rayDirection;
+
+    if (rayMarchStartPosKm.z < PassSrg::m_planetRadiusKm)
+    {
+        // A simplification of going below water level.
+        return false;
+    }
+
+    intersectionResults.m_rayMarchStartPosKm = rayMarchStartPosKm;
+    intersectionResults.m_rayMarchDistanceKm = rayMarchDistanceKm;
+    intersectionResults.m_rayDirection = rayDirection;
+    intersectionResults.m_distanceFromCameraToInnerSphereKm = distanceToInnerSphereKm;
+    return true;
+}
+
+
+// @screenLocation is in pixels.
+float GetJitterOffset(float2 screenLocation)
+{
+    // “interleaved gradient noise” by Jorge Jimenez
+    const float3 magic = float3(0.067110560, 0.00583715, 52.9829189); 
+    return -1.0 + 2.0 * frac(magic.z * frac( dot(screenLocation, magic.xy)));
+}
+
+// Some notes. This compute shader calculates RGB (cloud color) and A (opacity, based on transmittance).
+// It assumes that the fragment shader will blend as: CloudRGB * One + RT (1 - cloudAlpha)
+// cloudAlpha = (1 - Transmittance).
+// This means that where there's no cloud, the CloudRGB must be (0,0,0) and cloudAlpha = 0.
+// With low transmittance we'd have opaque clouds.
+// With high transmittance we'd have transparent clouds and we'd see
+// only the existing pixel color of the Render Target RT.
+float4 GetCloudColor(const float2 pixUV, const float2 pixLoc)
+{
+    // To avoid ghosting issues related with reprojection we will ray march the pixel
+    // even if it is not visible. But we will ray march it with less steps.
+    bool isCloudPixelBlocked = false;
+    AtmosphereIntersectionInfo interInfo;
+    if (!GetCloudSlabIntersections(pixUV, interInfo, isCloudPixelBlocked))
+    {
+        return 0.00;
+    }
+
+    // const bool wasCloudsPixelBlocked = PassSrg::m_prevFrameDepthTexture.SampleLevel(PassSrg::ClampPointSampler, pixUV, 0) != 0.0;
+    // if (isCloudPixelBlocked && wasCloudsPixelBlocked)
+    // {
+    //     return 0.0;
+    // }
+
+    // We have now the ray marching data limits... start position, direction,
+    // distance, etc.
+    const float distanceToInnerSphereKm = interInfo.m_distanceFromCameraToInnerSphereKm;
+
+    // Start the RayMarch
+    const float rayMarchDistanceKm = interInfo.m_rayMarchDistanceKm;
+    const float3 rayDirection = interInfo.m_rayDirection;
+
+    // The minimum distance to raymarch inside the atmosphere is the atmosphere's thickness.
+    // Throughout this thickness we will do minimum PassSrg::m_minRayMarchingSteps samples.
+    // But when looking towards the horizon we'll ray march up to PassSrg::m_maxRayMarchingSteps samples.
+    const uint rayMarchStepsDivider  = 0; //uint(isCloudPixelBlocked) * 1 ;
+    const int minRayMarchingSteps = max(PassSrg::m_minRayMarchingSteps >> rayMarchStepsDivider, 1);
+    const int maxRayMarchingSteps = min(PassSrg::m_maxRayMarchingSteps >> rayMarchStepsDivider, 128);
+    const int numSamples = max(min((minRayMarchingSteps * rayMarchDistanceKm) / (PassSrg::m_cloudSlabThicknessKm), maxRayMarchingSteps), 1);
+    float stepSizeKm = rayMarchDistanceKm/numSamples;
+#define LARGE_STEP_INC 1 // Values greater than 1 introduce noise.
+
+    const float3 rayMarchStartPosKm = interInfo.m_rayMarchStartPosKm + rayDirection * GetJitterOffset(pixLoc) * stepSizeKm;
+
+    float3 totalColor = float3(0.0, 0.0, 0.00);
+    float totalTransmittance = 1.0;
+    //float totalAlpha = 0.0;
+
+    // Extinction/Attenuation coefficent.
+    const float eCoef = max(PassSrg::m_aCoef + PassSrg::m_sCoef, 0.00000001); //0.04m-1 for a Step size of 1KM.
+
+    bool isEmptySpace = true;
+    int zeroDensitySampleCount = 0;
+    int stepIdx = 0;
+
+    // Using mip level for 3D Noise Texture sampling is very important for performance reasons.
+    // The trick is in finding the starting level.
+    // It was found that mip level should always start at 0.0 (best quality) for starting distances
+    // less than m_cloudSlabDistanceAboveSeaLevelKm.
+    float mipLevel = Remap(distanceToInnerSphereKm,
+                           PassSrg::m_cloudSlabDistanceAboveSeaLevelKm,
+                           distanceToInnerSphereKm + rayMarchDistanceKm,
+                           0.0, PassSrg::m_maxMipLevels - 1);
+    mipLevel = max(0.0, mipLevel);
+    const float mipLevelStep = float(PassSrg::m_maxMipLevels) / float(numSamples);
+
+    // // As the ray marching distance gets longer, it is important to shrink the uvw scale
+    // // when sampling 3D noise textures from World Position.
+    const float minUVWscale = PassSrg::m_uvwScale * 0.250;
+    const float maxUVWscale = PassSrg::m_uvwScale;
+    const float uvwScaleRemap = saturate(Remap(distanceToInnerSphereKm,
+                           PassSrg::m_cloudSlabDistanceAboveSeaLevelKm * 0.75,
+                           PassSrg::m_cloudSlabDistanceAboveSeaLevelKm * 10.0,
+                           0.0, 1.0));
+    const float uvwScale = PassSrg::m_uvwScale; //lerp(maxUVWscale, minUVWscale, uvwScaleRemap);
+    
+    //float mipLevel = Remap(numSamples, MIN_STEPS, MAX_STEPS, 0.0, PassSrg::m_maxMipLevels - 1);
+    //const float  mipLevelStep = 0.0;
+
+    while (stepIdx < numSamples)
+    {
+        // The loop starts assuming we are in empty space.
+        const float3 rayDirectionStep = rayDirection * stepIdx;
+        const float3 rayWorldPosKm = rayMarchStartPosKm + rayDirectionStep * stepSizeKm;
+        float heightFraction = PassSrg::GetHeightFraction(rayWorldPosKm);
+        const bool expensive = !isEmptySpace;
+        float sampledCloudDensity = SampleCloudDensity(rayWorldPosKm, uvwScale, mipLevel, heightFraction, expensive);
+
+        if (sampledCloudDensity <= 0.0)
+        {
+            if (isEmptySpace)
+            {
+                // Keep doing cheap sampling at large steps;
+                stepIdx += LARGE_STEP_INC;
+                continue;
+            }
+            zeroDensitySampleCount++;
+            stepIdx++;
+            if (zeroDensitySampleCount >= 6)
+            {
+                isEmptySpace = true;
+            }
+            continue;
+        }
+        zeroDensitySampleCount = 0;
+
+        // We found a cloud, but if we were doing cheap sampling in empty space
+        // we need to step back by LARGE_STEP_INC and start doing "expensive" sampling in small steps.
+        if (isEmptySpace)
+        {
+            isEmptySpace = false;
+            stepIdx = max(stepIdx - LARGE_STEP_INC, 0);
+            continue;
+        }
+
+        float stepTransmittance = exp(-eCoef * sampledCloudDensity * stepSizeKm);
+
+        // Calculate the Light Energy that arrives as this point in the raymarch.
+        const float3 luminance = GetMultiScatteredLuminance(rayWorldPosKm, stepSizeKm, rayDirection) + PassSrg::GetAmbientLightColor(heightFraction);
+
+        // The frostbite trick for better integration.
+        float3 integScatt = (luminance - luminance * stepTransmittance) / eCoef;
+        totalColor += totalTransmittance * integScatt;
+        totalTransmittance *= stepTransmittance;
+
+        //totalColor += totalTransmittance * currentLight * stepSizeKm;
+
+        // The higher the total alpha, the less the new transmittance contributes to the total alpha.
+        //totalAlpha += (1.0 - stepTransmittance) * (1.0 - totalAlpha);
+        
+        //if (totalAlpha >= 0.950)
+        if (totalTransmittance <= 0.05)
+        {
+            // TODO: Add Russian Roulette.
+            // Not getting any more dense than this.
+            // Exit for loop.
+            break;
+        }
+        stepIdx++;
+        mipLevel += mipLevelStep;
+    }
+
+    float totalAlpha = 1.00 - totalTransmittance;
+
+    //totalColor = max(PassSrg::GetAmbientLightColor(0), totalColor);
+
+    // We are going to alter alpha (reduce it) starting with the current value
+    // all the way to 0 if the distance from the camera to the inner sphere starts to exceed
+    // 10 times the camera far plane distance.
+    const float alphaReduceStartDistance = (10 * 1024.0)*0.001;
+    if (distanceToInnerSphereKm >= alphaReduceStartDistance)
+    {
+        const float maxDistance = alphaReduceStartDistance * 3.0;//PassSrg::m_weatherMapSizeKm * 0.5;
+        const float fraction = saturate((distanceToInnerSphereKm - alphaReduceStartDistance)/maxDistance);
+        totalAlpha = lerp(totalAlpha, 0, fraction);
+        totalColor = lerp(totalColor, float3(0, 0.0, 0), fraction);
+    }
+
+    return float4(totalColor, totalAlpha);//TransformColor(float3(1, 1, 1), ColorSpaceId::LinearSRGB, ColorSpaceId::ACEScg);
+
+}
+
+
+// Remark about thread_id and pixel location...
+// Each Thread is invoked to write to 1 out of 16 pixels (0..15)
+// in 4x4 block.
+// For example imagine the UAV is of size 1280x720.
+// The Dispatch call would be (1280/8, 720/8, 1) = (160, 90, 1)
+// But further more, the total required number of Thread Groups should be
+// (160/4, 90/4, 1) = (40, 22.5, 1) = (40, 23, 1)
+// So, in the end we have to multiply SV_DispatchThreadID.xy * 4 + f 
+[numthreads(8, 8, 1)]
+void MainCS(uint3 thread_id: SV_DispatchThreadID)
+{
+    uint2 pixelLoc = thread_id.xy * 4 + PassSrg::GetPixelBlockXY();
+    //uint2 pixelLoc = thread_id.xy;// * 4 + PassSrg::GetPixelBlockXY();
+
+    // Do nothing if we are outside the target texture dimensions.
+    uint2 texDims;
+    PassSrg::m_cloudscapeOut[0].GetDimensions(texDims.x, texDims.y);
+    if ((pixelLoc.x >= texDims.x) || (pixelLoc.y >= texDims.y))
+    {
+        return;
+    }
+
+    // // Determine if this is the raymarched pixel.
+    // if (!PassSrg::IsRayMarchedPixel(pixelLoc))
+    // {
+    //     // Not off-the-hook yet. If right now this cloud pixel is visible
+    //     // but in the previous frame it was covered, we need to fully render it
+    //     // to avoid the eye sore due to 1/16 pixel rendering.
+    //     //if (PassSrg::IsPixelVisible
+    //     return;
+    // }
+
+    float2 pixelLocF = float2(pixelLoc);
+    float2 pixelUV = pixelLocF / float2(texDims);
+    float4 cloudColor = GetCloudColor(pixelUV, pixelLocF);
+    
+    uint pingPondIdx = PassSrg::GetOutputTextureIndex();
+    PassSrg::m_cloudscapeOut[pingPondIdx][pixelLoc] = cloudColor;
+}; 

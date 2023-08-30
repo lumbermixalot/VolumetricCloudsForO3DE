@@ -1,0 +1,38 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+#include <Atom/Features/SrgSemantics.azsli>
+
+#include <Atom/Features/PostProcessing/FullscreenVertex.azsli>
+
+ShaderResourceGroup PassSrg : SRG_PerPass
+{
+    Texture2D<float2> m_depthStencilTexture;
+    Sampler ClampPointSampler
+    {
+        MinFilter = Point;
+        MagFilter = Point;
+        MipFilter = Point;
+        AddressU = Clamp;
+        AddressV = Clamp;
+        AddressW = Clamp;
+    };
+}
+
+struct PSOutput
+{
+    float m_depth : SV_Target0;
+};
+
+PSOutput MainPS(VSOutput IN)
+{
+    PSOutput OUT;
+    
+    OUT.m_depth = PassSrg::m_depthStencilTexture.Sample(PassSrg::ClampPointSampler, IN.m_texCoord).r;
+
+    return OUT;
+}

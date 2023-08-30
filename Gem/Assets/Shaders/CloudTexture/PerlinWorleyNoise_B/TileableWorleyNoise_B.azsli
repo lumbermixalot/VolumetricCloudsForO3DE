@@ -1,0 +1,73 @@
+
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+#pragma once
+
+#include "Common_B.azsli"
+
+// This version of tileable worley noise
+// comes from https://www.shadertoy.com/view/3dVXDc (Created by piyushslayer)
+
+float WorleyNoise(float3 input, float freq)
+{
+	/* Determine which cube the evaluation point is in */
+	float3 baseCell = floor(input);
+	float3 fracCell = frac(input);
+
+	float shortest_distance = 10000.0f;
+
+	/* Loop over the neightbors */
+	[unroll]
+	for (int iX = -1; iX <= 1; iX++)
+	{
+		[unroll]
+		for (int iY = -1; iY <= 1; iY++)
+		{
+			[unroll]
+			for (int iZ = -1; iZ <= 1; iZ++)
+			{
+				float3 offset = float3(iX,iY,iZ);
+				float3 cell = baseCell + offset;
+				float3 tiledCell = mymod(cell, freq);
+				
+				float3 cellPosition = hash33(tiledCell) * 0.5 + 0.5;
+				cellPosition += offset;
+
+				float3 deltaToCell = fracCell - cellPosition;
+
+				// REMARKS:
+				// It was found that both DOT(v,v) (aka|v|^2), instead of LENGTH(v)
+				// gives better results for cloud formation.
+				shortest_distance = min(shortest_distance, dot(deltaToCell, deltaToCell));
+				//shortest_distance = min(shortest_distance, length(deltaToCell));
+			}
+		}
+	}
+
+    // Inverted Worley Noise for the Bubble Shape
+    return 1.0 - shortest_distance;
+}
+
+// @frequency typically equals 4.
+float WorleyNoiseFbm(float3 input, float frequency, int octaves = 3, float persistence = 0.45, float amplitude = 0.625)
+{
+    float total = 0;
+    //float maxValue = 0;  // Used for normalizing result to 0.0 - 1.0
+    for(int i=0;i<octaves;i++) {
+        total += WorleyNoise(input * frequency, frequency) * amplitude;
+        
+        //maxValue += amplitude;
+        
+        amplitude *= persistence;
+        frequency *= 2;
+    }
+    
+    return total;//maxValue;
+}
+
+
+

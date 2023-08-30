@@ -1,0 +1,53 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+#include <scenesrg.srgi>
+#include <viewsrg.srgi>
+
+#include <Atom/Features/PostProcessing/FullscreenVertex.azsli>
+#include <Atom/Features/PostProcessing/FullscreenPixelInfo.azsli>
+#include <Atom/Features/ColorManagement/TransformColor.azsli>
+
+ShaderResourceGroup PassSrg : SRG_PerPass
+{
+    // Takes value 0 or 1, and helps select the @m_cloudscapeTexture.
+    uint m_cloudscapeTextureIndex;
+
+    // We use this to check if the current pixel is blocked or is a visible
+    // cloud pixel.
+    Texture2D<float2> m_depthStencilTexture;
+
+    // We read from only one of these two textures every other frame.
+    Texture2D<float4> m_cloudscapeTexture[2];
+
+    float4 GetCloudColor(int3 pixelLoc)
+    {
+        return m_cloudscapeTexture[m_cloudscapeTextureIndex].Load(pixelLoc);
+    }
+}
+
+
+PSOutput MainPS(VSOutput IN)
+{
+    PSOutput OUT;
+
+    const int3 pixelLoc = int3(IN.m_position.xy, 0);
+
+    if (PassSrg::m_depthStencilTexture.Load(pixelLoc).r != 0)
+    {
+        OUT.m_color = float4(0, 0, 0, 0);
+        return OUT;
+    }
+
+    float4 cloudColor = PassSrg::GetCloudColor(pixelLoc);
+
+    cloudColor.rgb = TransformColor(cloudColor.rgb, ColorSpaceId::LinearSRGB, ColorSpaceId::ACEScg);
+
+    OUT.m_color = cloudColor;
+
+    return OUT;
+}; 

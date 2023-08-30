@@ -1,0 +1,46 @@
+# 
+# Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+# 
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+# 
+
+set(FILES
+    Source/VolumetricCloudsModuleInterface.cpp
+    Source/VolumetricCloudsModuleInterface.h
+    Source/Clients/VolumetricCloudsSystemComponent.cpp
+    Source/Clients/VolumetricCloudsSystemComponent.h
+    Source/Clients/Components/CloudTextureComputeComponent.cpp
+    Source/Clients/Components/CloudTextureComputeComponent.h
+    Source/Clients/Components/CloudTextureComputeComponentController.cpp
+    Source/Clients/Components/CloudTextureComputeComponentController.h
+    Source/Clients/Components/CloudTextureAssetComponent.cpp
+    Source/Clients/Components/CloudTextureAssetComponent.h
+    Source/Clients/Components/CloudTextureAssetComponentController.cpp
+    Source/Clients/Components/CloudTextureAssetComponentController.h
+    Source/Clients/Components/CloudscapeComponent.cpp
+    Source/Clients/Components/CloudscapeComponent.h
+    Source/Clients/Components/CloudscapeComponentController.cpp
+    Source/Clients/Components/CloudscapeComponentController.h
+    Source/Renderer/CloudTextureComputePipeline.cpp
+    Source/Renderer/CloudTextureComputePipeline.h
+    Source/Renderer/CloudTexturesDebugViewerFeatureProcessor.cpp
+    Source/Renderer/CloudTexturesDebugViewerFeatureProcessor.h
+    Source/Renderer/CloudTexturesComputeFeatureProcessor.cpp
+    Source/Renderer/CloudTexturesComputeFeatureProcessor.h
+    Source/Renderer/CloudTexturePresentationData.cpp
+    Source/Renderer/CloudTexturePresentationData.h
+    Source/Renderer/CloudscapeFeatureProcessor.cpp
+    Source/Renderer/CloudscapeFeatureProcessor.h
+    Source/Renderer/CloudMaterialProperties.cpp
+    Source/Renderer/CloudMaterialProperties.h
+    Source/Renderer/CloudscapeShaderConstantData.cpp
+    Source/Renderer/CloudscapeShaderConstantData.h
+    Source/Renderer/Passes/CloudTextureComputePass.cpp
+    Source/Renderer/Passes/CloudTextureComputePass.h
+    Source/Renderer/Passes/CloudTextureComputeData.cpp
+    Source/Renderer/Passes/CloudTextureComputeData.h
+    Source/Renderer/Passes/CloudscapeRenderPass.cpp
+    Source/Renderer/Passes/CloudscapeRenderPass.h
+    Source/Renderer/Passes/CloudscapeComputePass.cpp
+    Source/Renderer/Passes/CloudscapeComputePass.h
+)

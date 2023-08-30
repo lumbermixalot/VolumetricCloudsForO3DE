@@ -1,0 +1,32 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+#pragma once
+
+
+// This function is based on the idea from:
+// "Real-time rendering of volumetric clouds" by Fredrik Häggström
+// Instead of sampling 1 of 16 pixel in this 4x4 block order:
+//  0  1  2  3
+//  4  5  6  7
+//  8  9 10 11
+// 12 13 14 15
+// We use this crossed pattern:
+//  0  8  2 10
+// 12  4 14  6
+//  3 11  1  9
+// 15  7 13  5
+uint GetTransformed4x4PixelIndex(uint pixelIndex4x4)
+{
+    static const uint CROSSED_PATTERN[16] = {
+         0,  8,  2, 10,
+        12,  4, 14,  6,
+         3, 11,  1,  9,
+        15,  7, 13,  5,
+    };
+    return CROSSED_PATTERN[pixelIndex4x4];
+}

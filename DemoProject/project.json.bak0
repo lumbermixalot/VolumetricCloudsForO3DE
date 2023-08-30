@@ -1,0 +1,27 @@
+{
+    "project_name": "VolumetricCloudsProject",
+    "version": "1.0.0",
+    "project_id": "{8B73C920-2606-4D58-8997-F696335EB910}",
+    "origin": "The primary repo for VolumetricCloudsProject goes here: i.e. http://www.mydomain.com",
+    "license": "What license VolumetricCloudsProject uses goes here: i.e. https://opensource.org/licenses/Apache-2.0 Or https://opensource.org/licenses/MIT etc.",
+    "display_name": "VolumetricCloudsProject",
+    "summary": "A short description of VolumetricCloudsProject.",
+    "canonical_tags": [
+        "Project"
+    ],
+    "user_tags": [
+        "VolumetricCloudsProject"
+    ],
+    "icon_path": "preview.png",
+    "engine": "o3de",
+    "external_subdirectories": [
+        "Gem"
+    ],
+    "gem_names": [
+        "VolumetricCloudsProject",
+        "Atom",
+        "CameraFramework",
+        "ImGui"
+    ],
+    "restricted": "VolumetricCloudsProject"
+}

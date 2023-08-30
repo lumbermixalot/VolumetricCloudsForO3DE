@@ -1,0 +1,12 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "RenderPipelineDescriptor",
+    "ClassData": {
+        "Name": "CloudTexturePipeline",
+        "MainViewTag": "CloudTextureComputeTag",
+        "RootPassTemplate": "CloudTexturePipelineTemplate",
+        "MaterialPipelineTag": "WhoCares",
+        "AllowModification": true
+    }
+}

@@ -1,0 +1,47 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassAsset",
+    "ClassData": {
+        "PassTemplate": {
+            "Name": "CloudscapeComputePassTemplate",
+            "PassClass": "ComputePass",
+            "Slots": [
+                //Input
+                {
+                    "Name": "InputDepthStencil",
+                    "SlotType": "Input",
+                    "ShaderInputName": "m_depthStencilTexture",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ImageViewDesc": {
+                        "AspectFlags": [
+                            "Depth"
+                        ]
+                    }
+                },
+                //Input/Output
+                {
+                    "Name": "Cloudscape0",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "m_cloudscapeTexture", //"NoBind", 
+                    "ShaderInputArrayIndex": "0"
+                },
+                {
+                    "Name": "Cloudscape1",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "m_cloudscapeTexture", //"NoBind" 
+                    "ShaderInputArrayIndex": "1"
+                }
+            ],
+            "PassData": {
+                "$type": "ComputePassData",
+                "ShaderAsset": {
+                    "FilePath": "Shaders/Cloudscape/CloudscapeReprojectionCS.shader"
+                },
+                "BindViewSrg": true
+            }
+        }
+    }
+}

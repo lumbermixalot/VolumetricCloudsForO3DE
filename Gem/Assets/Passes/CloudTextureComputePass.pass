@@ -1,0 +1,79 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassAsset",
+    "ClassData": {
+        "PassTemplate": {
+            "Name": "CloudTextureComputePassTemplate",
+            "PassClass": "CloudTextureComputePass",
+            "Slots": [
+                // In a single execution of this pass we can generate up to 8 mips at once.
+                // We start with "NoBind" for all these attachments because the attachments
+                // are actually defined at runtime.
+                {
+                    "Name": "OutputMip0",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "0"
+                },
+                {
+                    "Name": "OutputMip1",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "1"
+                },
+                {
+                    "Name": "OutputMip2",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "2"
+                },
+                {
+                    "Name": "OutputMip3",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "3"
+                },
+                {
+                    "Name": "OutputMip4",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "4"
+                },
+                {
+                    "Name": "OutputMip5",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "5"
+                },
+                {
+                    "Name": "OutputMip6",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "6"
+                },
+                {
+                    "Name": "OutputMip7",
+                    "SlotType": "Output",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //m_cloudTextureMips",
+                    "ShaderInputArrayIndex": "7"
+                }
+            ],
+            "PassData": {
+                "$type": "ComputePassData",
+                "ShaderAsset": {
+                    "FilePath": "Shaders/CloudTexture/CloudTextureCS.shader"
+                },
+                "BindViewSrg": false
+            }
+        }
+    }
+}

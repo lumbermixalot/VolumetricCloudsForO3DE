@@ -1,0 +1,52 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassAsset",
+    "ClassData": {
+        "PassTemplate": {
+            "Name": "CloudscapeRenderPassTemplate",
+            "PassClass": "CloudscapeRenderPass",
+            "Slots": [
+                //Input
+                {
+                    "Name": "InputDepthStencil",
+                    "SlotType": "Input",
+                    "ShaderInputName": "m_depthStencilTexture",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ImageViewDesc": {
+                        "AspectFlags": [
+                            "Depth"
+                        ]
+                    }
+                },
+                {
+                    "Name": "Cloudscape0",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "m_cloudscapeTexture", //"NoBind", 
+                    "ShaderInputArrayIndex": "0"
+                },
+                {
+                    "Name": "Cloudscape1",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "m_cloudscapeTexture", //"NoBind" 
+                    "ShaderInputArrayIndex": "1"
+                },
+                //Output
+                {
+                    "Name": "ColorOutput",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "RenderTarget"
+                }
+            ],
+            "PassData": {
+                "$type": "FullscreenTrianglePassData",
+                "ShaderAsset": {
+                    "FilePath": "Shaders/Cloudscape/Cloudscape.shader"
+                },
+                "BindViewSrg": true
+            }
+        }
+    }
+}

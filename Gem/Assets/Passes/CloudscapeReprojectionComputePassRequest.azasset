@@ -1,0 +1,35 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassRequest",
+    "ClassData": {
+        "Name": "CloudscapeReprojectionComputePass",
+        "TemplateName": "CloudscapeReprojectionComputePassTemplate",
+        "Enabled": true,
+        "Connections": [
+            // Input
+            {
+                "LocalSlot": "InputDepthStencil",
+                "AttachmentRef": {
+                    "Pass": "DepthPrePass",
+                    "Attachment": "Depth"
+                }
+            },
+            // Input/Output
+            {
+                "LocalSlot": "Cloudscape0",
+                "AttachmentRef": {
+                    "Pass": "CloudscapeComputePass",
+                    "Attachment": "Output0"
+                }
+            },
+            {
+                "LocalSlot": "Cloudscape1",
+                "AttachmentRef": {
+                    "Pass": "CloudscapeComputePass",
+                    "Attachment": "Output1"
+                }
+            }
+        ]
+    }
+}

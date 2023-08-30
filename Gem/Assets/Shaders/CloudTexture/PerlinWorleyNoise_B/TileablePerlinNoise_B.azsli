@@ -1,0 +1,69 @@
+
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+#pragma once
+
+#include "Common_B.azsli"
+
+// This version of tileable perlin noise
+// comes from https://www.shadertoy.com/view/3dVXDc (Created by piyushslayer)
+
+
+// Gradient noise by iq (modified to be tileable)
+float TileableGradientNoise(float3 input, float freq)
+{
+    // grid
+    float3 p = floor(input);
+    float3 w = frac(input);
+    
+    // quintic interpolant
+    float3 u = w * w * w * (w * (w * 6. - 15.) + 10.);
+
+    // gradients
+    float3 ga = hash33(mymod(p + float3(0., 0., 0.), freq));
+    float3 gb = hash33(mymod(p + float3(1., 0., 0.), freq));
+    float3 gc = hash33(mymod(p + float3(0., 1., 0.), freq));
+    float3 gd = hash33(mymod(p + float3(1., 1., 0.), freq));
+    float3 ge = hash33(mymod(p + float3(0., 0., 1.), freq));
+    float3 gf = hash33(mymod(p + float3(1., 0., 1.), freq));
+    float3 gg = hash33(mymod(p + float3(0., 1., 1.), freq));
+    float3 gh = hash33(mymod(p + float3(1., 1., 1.), freq));
+    
+    // projections
+    float va = dot(ga, w - float3(0., 0., 0.));
+    float vb = dot(gb, w - float3(1., 0., 0.));
+    float vc = dot(gc, w - float3(0., 1., 0.));
+    float vd = dot(gd, w - float3(1., 1., 0.));
+    float ve = dot(ge, w - float3(0., 0., 1.));
+    float vf = dot(gf, w - float3(1., 0., 1.));
+    float vg = dot(gg, w - float3(0., 1., 1.));
+    float vh = dot(gh, w - float3(1., 1., 1.));
+	
+    // interpolation
+    return va + 
+           u.x * (vb - va) + 
+           u.y * (vc - va) + 
+           u.z * (ve - va) + 
+           u.x * u.y * (va - vb - vc + vd) + 
+           u.y * u.z * (va - vc - ve + vg) + 
+           u.z * u.x * (va - vb - ve + vf) + 
+           u.x * u.y * u.z * (-va + vb + vc - vd + ve - vf - vg + vh);
+}
+
+// Values x, y and z can be arbitrary values
+// that range let's say within 64 pixels,
+// or within 256 pixels, or within the Viewport size
+float PerlinNoiseFbm(float3 input, float frequency, int octaves, float persistence /* aka gain*/, float amplitude = 1.0) {
+    float total = 0;
+    for(int i = 0; i < octaves; i++) {
+        total += TileableGradientNoise(input * frequency, frequency) * amplitude;
+        frequency *= 2;
+        amplitude *= persistence;
+    }
+    
+    return total;
+}

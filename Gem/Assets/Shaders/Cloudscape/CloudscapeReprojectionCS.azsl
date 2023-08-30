@@ -1,0 +1,165 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+#include <scenesrg.srgi>
+#include <viewsrg.srgi>
+
+#include <Atom/RPI/Math.azsli>
+#include <Atom/Features/ScreenSpace/ScreenSpaceUtil.azsli>
+
+#include "CloudscapeCommon.azsli"
+
+ShaderResourceGroup PassSrg : SRG_PerPass
+{
+    // A number from 0 .. 15. Defines the pixel index
+    // within each 4x4 block that will be ray marched in this frame. 
+    uint m_pixelIndex4x4;
+
+    // We write to only one of these two textures every other frame.
+    RWTexture2D<float4> m_cloudscapeTexture[2];
+    
+    Texture2D<float2> m_depthStencilTexture;
+
+    uint GetOutputTextureIndex()
+    {
+        return (uint)fmod(m_pixelIndex4x4, 2);
+    }
+
+    // This helper function calculates the corresponding
+    // XY location within a 4x4 block of pixels.
+    uint2 GetPixelBlockXY()
+    {
+        const uint pixelIndex4x4 = GetTransformed4x4PixelIndex(m_pixelIndex4x4);
+        const uint rowIdx = pixelIndex4x4 >> 2;
+        const uint colIdx = pixelIndex4x4 - (rowIdx << 2);
+        return uint2(colIdx, rowIdx);
+    }
+
+    bool IsRayMarchedPixel(uint2 pixelLoc)
+    {
+        // 1280 x 720
+        // 1280 / 4 = 320
+        // 720 / 4 = 180
+
+        // 323 x 72
+        // 323 / 4 = 80.75
+        //    80 * 4 = 320. ModX = 3
+        // 72 / 4 = 18
+        //    18 * 4 = 72. ModY = 0
+        // pixelIndex4x4 = ModY * 4 + ModX = 0 * 4 + 3 = 3
+
+        // 323 x 74
+        // 323 / 4 = 80.75
+        //    80 * 4 = 320  . ModX = 3
+        // 74 / 4 = 18.5
+        //    18 * 4 = 72. ModY = 2
+        // pixelIndex4x4 = ModY * 4 + ModX = 2 * 4 + 3 = 11
+
+        //     320, 321, 322, 323
+        //  72   0    1    2    3
+        //  73   4    5    6    7
+        //  74   8    9   10   11
+        //  75  12   13   14   15  
+
+        const uint blockX = pixelLoc.x >> 2;
+        const uint modX = pixelLoc.x - (blockX * 4);
+        const uint blockY = pixelLoc.y >> 2;
+        const uint modY = pixelLoc.y - (blockY * 4);
+
+        const uint pixelIndex4x4 = modY * 4 + modX;
+        const uint transformedPixelIndex4x4 = GetTransformed4x4PixelIndex(m_pixelIndex4x4);
+        
+        return pixelIndex4x4 == transformedPixelIndex4x4;
+    }
+
+
+    uint2 GetRayMarchedPixelLocation(uint2 pixelLoc)
+    {
+        const uint blockX = pixelLoc.x >> 2;
+        const uint blockY = pixelLoc.y >> 2;
+        return uint2(blockX << 2, blockY << 2) + GetPixelBlockXY();
+    }
+
+
+    // Returns true if the previous pixel location is within @screenDims bounds
+    // AND the current pixel location is cloud visible.
+    bool GetReprojectedPixelLoc(uint2 pixelLoc, uint2 screenDims, inout uint2 prevPixelLocOut)
+    {
+        // Get the current clipSpace position.
+        const float2 pixelUV = float2(pixelLoc)/float2(screenDims);
+        const float zDepth = m_depthStencilTexture.Load(uint3(pixelLoc, 0)).r;
+        const float3 pixelPosWS = WorldPositionFromDepthBuffer(pixelUV, zDepth).xyz;
+
+        // Use the previous camera view-projection matrix to calculate screen pixel from
+        // world position.
+        const float4 clipPosPrev = mul(ViewSrg::m_viewProjectionPrevMatrix, float4(pixelPosWS, 1.0));
+        const float3 ndcPosPrev = clipPosPrev.xyz / clipPosPrev.w;
+        float2 uvPrev = (ndcPosPrev.xy + float2(1.0, -1.0)) * float2(0.5, -0.5);
+        const float2 prevPixLoc = float2(screenDims) * uvPrev + float2(0.5, 0.5);
+
+        prevPixelLocOut.x = clamp(prevPixLoc.x, 0, screenDims.x - 1);
+        prevPixelLocOut.y = clamp(prevPixLoc.y, 0, screenDims.y - 1);
+
+        const bool isInBounds = (prevPixLoc.x >= 0.0) && (prevPixLoc.x < screenDims.x) &&
+               (prevPixLoc.y >= 0.0) && (prevPixLoc.y < screenDims.y);
+        return isInBounds && (zDepth == 0.00);
+    }
+
+}
+
+
+// Unlike CloudscapeCS.azsl, this compute shader is invoked with as many
+// threads as the width and height of the image.
+// This means the first thing we must do is calculate if for this thread,
+// the pixel coordinate is the 1/16 that was actually raymarched by CloudscapeCS.azsl.
+// If it was raymarched we return early. For all other 15 pixels we do the actually reprojection
+// and copy pixel colors from the previous frame into the current frame.
+// Remark about thread_id and pixel location...
+// Each Thread is invoked to write to 1 out of 16 pixels (0..15)
+// in 4x4 block.
+// For example imagine the UAV is of size 1280x720.
+// The Dispatch call would be (1280/8, 720/8, 1) = (160, 90, 1)
+// But further more, the total required number of Thread Groups should be
+// (160/4, 90/4, 1) = (40, 22.5, 1) = (40, 23, 1)
+// So, in the end we have to multiply SV_DispatchThreadID.xy * 4 + f 
+[numthreads(8, 8, 1)]
+void MainCS(uint3 thread_id: SV_DispatchThreadID)
+{
+    uint2 pixelLoc = thread_id.xy;
+
+    // Do nothing if we are outside the target texture dimensions.
+    // This only happens when the render target size is not an exact multiple
+    // of 8x8 (Thread Group Size)
+    uint2 texDims;
+    PassSrg::m_cloudscapeTexture[0].GetDimensions(texDims.x, texDims.y);
+    if ((pixelLoc.x >= texDims.x) || (pixelLoc.y >= texDims.y))
+    {
+        return;
+    }
+
+    // Determine if this is the raymarched pixel.
+    if (PassSrg::IsRayMarchedPixel(pixelLoc))
+    {
+        return;
+    }
+
+    const uint currentTexIndex = PassSrg::GetOutputTextureIndex();
+    uint previousTexIndex = 1 - currentTexIndex;
+    
+    // The moment of truth, reprojection.
+    uint2 prevPixelLoc = 0 ;
+    if (!PassSrg::GetReprojectedPixelLoc(pixelLoc, texDims, prevPixelLoc))
+    {
+        // Either the previous pixel location is out of bounds or the current pixel is blocked
+        // by an object.
+        prevPixelLoc = PassSrg::GetRayMarchedPixelLocation(pixelLoc);
+        previousTexIndex = currentTexIndex;
+    }
+
+    PassSrg::m_cloudscapeTexture[currentTexIndex][pixelLoc] = PassSrg::m_cloudscapeTexture[previousTexIndex][prevPixelLoc];
+} 
+

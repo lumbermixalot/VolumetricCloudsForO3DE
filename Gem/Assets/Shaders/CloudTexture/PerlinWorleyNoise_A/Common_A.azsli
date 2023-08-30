@@ -1,0 +1,66 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+#pragma once
+
+// Utility functions
+
+// https://www.ronja-tutorials.com/post/024-white-noise/
+// get a scalar random value from a 3d value
+// Returns a value between 0.0 and 1.0
+float rand3dTo1d(float3 value, const float3 dotDir = float3(12.9898, 78.233, 37.719), const float seed = 143758.5453)
+{
+    //make value smaller to avoid artefacts
+    float3 smallValue = sin(value);
+    //get scalar value from 3d vector
+    float random = dot(smallValue, dotDir);
+    //make value more random by making it bigger and then taking teh factional part
+    random = frac(sin(random) * seed);
+    return random;
+}
+
+// https://www.ronja-tutorials.com/post/024-white-noise/
+// Returns a vector where all components will be between 0 and 1
+float3 rand3dTo3d(float3 seedVector, const float seed = 143758.5453)
+{
+    return float3(
+        rand3dTo1d(seedVector, float3(12.989, 78.233, 37.719), seed),
+        rand3dTo1d(seedVector, float3(39.346, 11.135, 83.155), seed),
+        rand3dTo1d(seedVector, float3(73.156, 52.235, 09.151), seed)
+    );
+}
+
+float3 modulo(float3 divident, float3 divisor)
+{
+    float3 positiveDivident = divident % divisor + divisor;
+    return positiveDivident % divisor;
+}
+
+
+// https://www.ronja-tutorials.com/post/024-white-noise/
+// get a scalar random value from a 3d value
+// Returns a value between 0.0 and 1.0
+float rand2dTo1d(float2 value, const float2 dotDir = float2(12.9898, 78.233), const float seed = 143758.5453)
+{
+    //make value smaller to avoid artefacts
+    float2 smallValue = sin(value);
+    //get scalar value from 3d vector
+    float random = dot(smallValue, dotDir);
+    //make value more random by making it bigger and then taking teh factional part
+    random = frac(sin(random) * seed);
+    return random;
+}
+
+// https://www.ronja-tutorials.com/post/024-white-noise/
+// Returns a vector where all components will be between 0 and 1
+float2 rand2dTo2d(float2 seedVector, const float seed = 143758.5453)
+{
+    return float2(
+        rand2dTo1d(seedVector, float2(12.989, 78.233), seed),
+        rand2dTo1d(seedVector, float2(39.346, 11.135), seed)
+    );
+}
+

@@ -1,0 +1,20 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassRequest",
+    "ClassData": {
+        "Name": "CloudscapeComputePass",
+        "TemplateName": "CloudscapeComputePassTemplate",
+        "Enabled": true,
+        "Connections": [
+            // Inputs
+            {
+                "LocalSlot": "InputDepthStencil",
+                "AttachmentRef": {
+                    "Pass": "DepthPrePass",
+                    "Attachment": "Depth"
+                }
+            }
+        ]
+    }
+}

@@ -1,0 +1,181 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+ // This is a cosmetic shader. Only useful to visualize a slice
+ // of a Texure3D with gradient noise data.
+ 
+#include <Atom/Features/ColorManagement/TransformColor.azsli>
+//#include <Atom/Features/SrgSemantics.azsli>
+#include <scenesrg.srgi>
+#include <viewsrg.srgi>
+
+option enum class VisibleChannel {PerlinWorley, WorleyFbm1, WorleyFbm2, WorleyFbm4, AllChannels} o_visible_channel = VisibleChannel::PerlinWorley;
+
+ShaderResourceGroup PerDrawSrg : SRG_PerDraw
+{
+    row_major float4x4 m_modelToWorld;
+
+    // The z component to sample from the 3D Texture. 
+    float m_texCoordZ;
+
+    bool m_alwaysFaceCamera;
+
+    Texture3D m_texture;
+    Sampler LinearSampler
+    {
+        MinFilter = Linear;
+        MagFilter = Linear;
+        MipFilter = Linear;
+        AddressU = Mirror;
+        AddressV = Mirror;
+        AddressW = Mirror;
+    };
+}
+
+struct VSInput
+{
+    uint m_vertexID : SV_VertexID;
+};
+
+struct VSOutput
+{
+    float4 m_position : SV_Position;
+    float2 m_texCoord : TEXCOORD;
+};
+
+float3 GetVertexModelPosition(uint vertexId)
+{
+    // 0---2 3 
+    // |  / /|
+    // | / / |
+    // 1/ 4--5
+    const float3 expansion[6] =
+    {
+        float3( 1, 0,  1),
+        float3( 1, 0, -1),
+        float3(-1, 0,  1),
+        float3(-1, 0,  1),
+        float3( 1, 0, -1),
+        float3(-1, 0, -1)
+    };
+
+    return expansion[vertexId]; //* PerDrawSrg::m_starParams.m_scale;
+}
+
+float2 GetVertexTextureCoord(uint vertexId)
+{
+    const float2 texcoord[6] = 
+    { 
+        float2(0, 0), 
+        float2(0, 1),
+        float2(1, 0),
+        float2(1, 0),
+        float2(0, 1),
+        float2(1, 1)    
+    };
+
+    return texcoord[vertexId];
+}
+
+float4 GetWorldPosition(float3 modelPosition)
+{
+    if (PerDrawSrg::m_alwaysFaceCamera)
+    {
+        const float3 myWorldPos = PerDrawSrg::m_modelToWorld._m03_m13_m23;
+
+        // Need to preserve the scale.
+        float3 r = PerDrawSrg::m_modelToWorld._m00_m10_m20;
+        float3 f = PerDrawSrg::m_modelToWorld._m01_m11_m21;
+        float3 u = PerDrawSrg::m_modelToWorld._m02_m12_m22;
+        float3 scale = float3(length(r), length(f), length(u));
+
+        const float3 cameraPos = ViewSrg::m_worldPosition;
+        float3 myForward = normalize(cameraPos - myWorldPos);
+        // Recreate Up and Right vectors.
+        float3 myRight = cross(myForward, float3(0, 0, 1.0));
+        float3 myUp = cross(myRight, myForward);
+
+        myRight *= scale.x;
+        myForward *= scale.y;
+        myUp *= scale.z;
+        const row_major float4x4 tm = {
+            myRight.x, myForward.x, myUp.x, myWorldPos.x,
+            myRight.y, myForward.y, myUp.y, myWorldPos.y,
+            myRight.z, myForward.z, myUp.z, myWorldPos.z,
+                    0,           0,      0,            1.0,
+        };
+        return mul(tm, float4(modelPosition, 1));
+    }
+
+    return mul(PerDrawSrg::m_modelToWorld, float4(modelPosition, 1));
+}
+
+VSOutput MainVS(VSInput IN)
+{
+    VSOutput OUT;
+
+    const uint vertexIndex = uint(IN.m_vertexID) % uint(6);
+    
+    // First, get the "model" position from the VertexId
+    float3 vertexModelPosition = GetVertexModelPosition(vertexIndex);
+    //float3 vertexWorldPosition = vertexModelPosition;//mul(PerDrawSrg::m_modelToWorld, float4(vertexModelPosition, 1));
+    float4 vertexWorldPosition = GetWorldPosition(vertexModelPosition);
+    OUT.m_position = mul(ViewSrg::m_viewProjectionMatrix, vertexWorldPosition);
+    OUT.m_texCoord = GetVertexTextureCoord(vertexIndex);
+    return OUT;
+};
+
+struct PSOutput
+{
+    float4 m_diffuse : SV_Target0;
+};
+
+PSOutput MainPS(VSOutput IN)
+{
+    PSOutput OUT;
+
+    float3 texCoord = float3(IN.m_texCoord, PerDrawSrg::m_texCoordZ);
+
+    float4 noiseChannels = PerDrawSrg::m_texture.Sample(PerDrawSrg::LinearSampler, texCoord).xyzw;
+    float4 color = 0.0;
+
+    switch (o_visible_channel)
+    {
+        case VisibleChannel::PerlinWorley:
+            color = noiseChannels.x;
+        break;
+        case VisibleChannel::WorleyFbm1:
+            color = noiseChannels.y;
+        break;
+        case VisibleChannel::WorleyFbm2:
+            color = noiseChannels.z;
+        break;
+        case VisibleChannel::WorleyFbm4:
+            color = noiseChannels.w;
+        break;
+        default:
+            color = noiseChannels;
+        break;
+    }
+
+    //float invGamma = 2.2;
+    //color.rgb = pow(color.rgb, float3(invGamma, invGamma, invGamma));
+
+    color.rgb = TransformColor(color.rgb, ColorSpaceId::LinearSRGB, ColorSpaceId::ACEScg);
+    //color.rgb = LinearSrgb_To_AcesCg(color.rgb);
+
+    //color.rgb = TransformColor(color.rgb, ColorSpaceId::LinearSRGB, ColorSpaceId::SRGB);
+    //color.rgb = HsvToRgb(color.rgb);
+    color.a = 1.0;
+
+    OUT.m_diffuse = color;
+
+    //OUT.m_diffuse = float4(1, 0, 0, 1);
+    //OUT.m_diffuse = float4(0, 0, 1.0, 1);
+
+    return OUT;
+}; 

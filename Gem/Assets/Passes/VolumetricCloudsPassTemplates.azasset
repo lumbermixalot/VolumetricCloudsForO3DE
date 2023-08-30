@@ -1,0 +1,33 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "AssetAliasesSourceData",
+    "ClassData": {
+        "AssetPaths": [
+            {
+                "Name": "CloudTextureComputePassTemplate",
+                "Path": "Passes/CloudTextureComputePass.pass"
+            },
+            {
+                "Name": "CloudTexturePipelineTemplate",
+                "Path": "Passes/CloudTexturePipeline.pass"
+            },
+            {
+                "Name": "CloudTextureRasterPassTemplate",
+                "Path": "Passes/CloudTextureRasterPass.pass"
+            },
+            {
+                "Name": "CloudscapeComputePassTemplate",
+                "Path": "Passes/CloudscapeComputePass.pass"
+            },
+            {
+                "Name": "CloudscapeRenderPassTemplate", 
+                "Path": "Passes/CloudscapeRenderPass.pass"
+            },
+            {
+                "Name": "CloudscapeReprojectionComputePassTemplate", 
+                "Path": "Passes/CloudscapeReprojectionComputePass.pass"
+            }
+        ]
+    }
+}

@@ -1,0 +1,34 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+#pragma once
+
+// Utility functions required by
+// TileablePerlinNoise_B & TileableWorleyNoise_B
+
+// Hash by David_Hoskins
+#define UI0 1597334673U
+#define UI1 3812015801U
+#define UI2 uint2(UI0, UI1)
+#define UI3 uint3(UI0, UI1, 2798796415U)
+#define UIF (1.0 / float(0xffffffffU))
+
+float3 hash33(float3 p)
+{
+	uint3 q = uint3(int3(p)) * UI3;
+	q = (q.x ^ q.y ^ q.z) * UI3;
+	return -1.0 + 2.0 * float3(q) * UIF;
+}
+
+// Implementation of glsl mod. We can not use
+// fmod, because fmod is equivalent to x - y * trunc(x/y).
+// They're the same when x/y is positive, different when x/y is negative.
+float3 mymod(float3 x, float y)
+{
+    return x - y * floor(x/y);
+}
+

@@ -1,0 +1,75 @@
+
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+#pragma once
+
+#include "Common_A.azsli"
+
+// This version of Perlin Noise is simpler than PerlinNoise.azsl.
+// Changed the implementation to what is described here:
+// https://www.ronja-tutorials.com/post/026-perlin-noise/
+// Because is easier to understand and is conducive to better tiling.
+
+// t is a value from 0.0 to 1.0.
+float fade(float t) {
+    // Fade function as defined by Ken Perlin.  This eases coordinate values
+    // so that they will ease towards integral values.  This ends up smoothing
+    // the final output.
+    // 6t^5 - 15t^4 + 10t^3
+    return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+
+// Values x, y and z can be arbitrary values
+// that range let's say within 64 pixels,
+// or within 256 pixels, or within the Viewport size
+float TileablePerlin3D(float3 input, float3 period)
+{
+    float3 fraction = frac(input);
+    float3 interpolator = float3(fade(fraction.x), fade(fraction.y), fade(fraction.z));
+
+	float cellNoiseZ[2];
+	[unroll]
+	for(int iZ=0; iZ <= 1; iZ++)
+    {
+		float cellNoiseY[2];
+		[unroll]
+		for(int iY=0; iY <= 1; iY++)
+        {
+			float cellNoiseX[2];
+			[unroll]
+			for(int iX=0; iX <= 1; iX++)
+            {
+				float3 cell = floor(input) + float3(iX, iY, iZ);
+                cell = modulo(cell, period);
+				float3 cellDirection = rand3dTo3d(cell) * 2 - 1; // Guarantees -1 to 1
+				float3 compareVector = fraction - float3(iX, iY, iZ);
+				cellNoiseX[iX] = dot(cellDirection, compareVector);
+			}
+			cellNoiseY[iY] = lerp(cellNoiseX[0], cellNoiseX[1], interpolator.x);
+		}
+		cellNoiseZ[iZ] = lerp(cellNoiseY[0], cellNoiseY[1], interpolator.y);
+	}
+
+	float noise = lerp(cellNoiseZ[0], cellNoiseZ[1], interpolator.z);
+    return noise;
+}
+
+
+// Values x, y and z can be arbitrary values
+// that range let's say within 64 pixels,
+// or within 256 pixels, or within the Viewport size
+float PerlinNoiseFbm(float3 input, float frequency, int octaves, float persistence /* aka gain */, float amplitude = 1.0) {
+    float total = 0;
+    for(int i = 0; i < octaves; i++) {
+        total += TileablePerlin3D(input * frequency, frequency) * amplitude;
+        frequency *= 2;
+        amplitude *= persistence;
+    }
+    
+    return total;
+}

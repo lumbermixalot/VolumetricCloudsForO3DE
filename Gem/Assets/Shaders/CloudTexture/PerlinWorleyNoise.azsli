@@ -1,0 +1,99 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+
+#pragma once
+
+#if 1
+#include "./PerlinWorleyNoise_A/TileablePerlinNoise_A.azsli"
+#include "./PerlinWorleyNoise_A/TileableWorleyNoise_A.azsli"
+#else
+#include "./PerlinWorleyNoise_B/TileablePerlinNoise_B.azsli"
+#include "./PerlinWorleyNoise_B/TileableWorleyNoise_B.azsli"
+#endif
+
+#define HARD_CODED_GUERILLA_WORLEY 0
+
+// Utility function that maps a value from one range to another.
+// From GPU Pro 7. Chapter 4
+static float Remap(float value, float oldMin, float oldMax, float newMin, float newMax)
+{
+    return (((value - oldMin) / (oldMax - oldMin)) * (newMax - newMin)) + newMin;
+}
+
+// Per Guerrilla Games' Andrew Schneider.
+static float WorleyNoiseFbmForClouds(float3 input, const float frequency = 4.0, const int octaves = 3, const float gain = 0.45, const float amplitude = 0.625)
+{
+#if HARD_CODED_GUERILLA_WORLEY
+    // Original optimized formula per Guerilla Games
+    const float wn1 = WorleyNoise(input * frequency, frequency) * .625;
+    const float wn2 = WorleyNoise(input * frequency * 2, frequency * 2) * 0.25;
+    const float wn3 = WorleyNoise(input * frequency * 4, frequency * 4) * 0.125;
+    return wn1 + wn2 + wn3;
+#else
+    return WorleyNoiseFbm(input, frequency, octaves, gain, amplitude);
+#endif
+}
+
+
+// @input has values between 0.0 and 1.0 
+float PerlinWorleyNoise(float3 input, const float frequency = 4.0, 
+                        const int perlinOctaves = 7, const float perlinGain = 0.5504, const float perlinAmplitude = 1.0,
+                        const int worleyOctaves = 3, const float worleyGain = 0.45,   const float worleyAmplitude = 0.625) {
+    float perlinNoise = PerlinNoiseFbm(input, frequency, perlinOctaves, perlinGain, perlinAmplitude);
+    // By default noise color is biased towards black.
+    // let's change that.
+    perlinNoise = lerp(1, perlinNoise, .5);
+    perlinNoise = abs( (perlinNoise * 2.0) - 1.0);
+
+
+    float worleyNoise = WorleyNoiseFbmForClouds(input, frequency, worleyOctaves, worleyGain, worleyAmplitude);
+    float pwNoise = Remap(perlinNoise, 0.0, 1.0, worleyNoise, 1.0);
+    return pwNoise;
+}
+
+// @input has values between 0.0 and 1.0 
+float3 WorleyNoiseFbmForCloudsTriplet(float3 input, const float frequency = 4.0, const int octaves = 3, const float gain = 0.45, const float amplitude = 0.625)
+{
+    float3 triplet = 0.0;
+    triplet.x = WorleyNoiseFbmForClouds(input, frequency * 1.0, octaves, gain, amplitude);
+    triplet.y = WorleyNoiseFbmForClouds(input, frequency * 2.0, octaves, gain, amplitude);
+    triplet.z = WorleyNoiseFbmForClouds(input, frequency * 4.0, octaves, gain, amplitude);
+    return triplet;
+}
+
+// Screen coordinates orientation
+// (0, 0)------>  (iResolution.x, 0)
+//       |
+//       |
+//       |
+// (0, iResolution.y)
+//PSOutput MainPS(VSOutput IN) // V2
+//{
+//    // Version2 does light calculation
+//    PSOutput OUT;
+//
+//    float2 uv = IN.m_position.xy / iResolution.xy;
+//    float2 mouse = iMouse.xy / iResolution.xy;
+//
+//
+//
+//    const float slices = 128.; // Number of layers of the 3d texture.
+//    float z = floor(mouse.y * slices) / slices;
+//    float frequency = 4.0;
+//    float2 pwNoiseAndWorleyNoise = PerlinWorleyNoise(float3(uv, z), frequency);
+//
+//    float4 color = 0.0;
+//    color.r += pwNoiseAndWorleyNoise.x; // Perlin Worley Noise
+//    color.g += pwNoiseAndWorleyNoise.y; // WorleyNoiseFbmForClouds at Frequency 4.0 * 1.0.
+//    color.b += WorleyNoiseFbmForClouds(float3(uv, z), frequency * 2.0);
+//    color.a += WorleyNoiseFbmForClouds(float3(uv, z), frequency * 4.0);
+//
+//    OUT.m_color = color;
+//
+//    return OUT;
+//}
+

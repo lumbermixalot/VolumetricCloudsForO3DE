@@ -1,0 +1,18 @@
+{
+    "Amazon": {
+        "AssetProcessor": {
+            "Settings": {
+                "ScanFolder VolumetricClouds/Assets": {
+                    "watch": "@GEMROOT:VolumetricClouds@/Assets",
+                    "recursive": 1,
+                    "order": 101
+                },
+                "ScanFolder VolumetricClouds/Registry": {
+                    "watch": "@GEMROOT:VolumetricClouds@/Registry",
+                    "recursive": 1,
+                    "order": 102
+                }
+            }
+        }
+    }
+}

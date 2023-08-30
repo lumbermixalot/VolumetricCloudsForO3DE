@@ -1,0 +1,31 @@
+{
+    "gem_name": "VolumetricClouds",
+    "version": "1.0.0",
+    "display_name": "Volumetric Clouds",
+    "license": "MIT",
+    "license_url": "",
+    "origin": "Galib Arrieta",
+    "origin_url": "",
+    "type": "Code",
+    "summary": "Provides A Volumetric Clouds Component",
+    "canonical_tags": [
+        "Gem"
+    ],
+    "user_tags": [
+        "VolumetricClouds"
+    ],
+    "platforms": [
+        "Windows",
+        "Android",
+        "iOS",
+        "Linux"
+    ],
+    "icon_path": "",
+    "requirements": "",
+    "documentation_url": "",
+    "dependencies": [],
+    "repo_uri": "",
+    "compatible_engines": [],
+    "engine_api_dependencies": [],
+    "restricted": "VolumetricClouds"
+}

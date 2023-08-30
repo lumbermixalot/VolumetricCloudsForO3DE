@@ -1,0 +1,17 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassAsset",
+    "ClassData": {
+        "PassTemplate": {
+            "Name": "CloudTexturePipelineTemplate",
+            "PassClass": "ParentPass",
+            "PassRequests": [
+                {
+                    "Name": "CloudTextureComputePass",
+                    "TemplateName": "CloudTextureComputePassTemplate"
+                }
+            ]
+        }
+    }
+}

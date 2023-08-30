@@ -1,0 +1,117 @@
+/*
+* Copyright (c) Galib Arrieta (aka lumbermixalot@github, aka galibzon@github).
+*
+* SPDX-License-Identifier: Apache-2.0 OR MIT
+*
+*/
+#include <Atom/Features/SrgSemantics.azsli>
+
+#include "PerlinWorleyNoise.azsli"
+
+ShaderResourceGroup CloudTexturePassSrg : SRG_PerPass
+{
+    // The starting frequency for both Perlin and Worley FBMs
+    // We expect it to be a value betweem 1 and 10, where the
+    // value 4 is typical.
+    float m_frequency; // = 4.0
+    
+    int m_perlinOctaves;// = 7
+    float m_perlinGain;// = 0.5504,
+    float m_perlinAmplitude; // = 1.0
+    
+    int m_worleyOctaves; // = 3, 
+    float m_worleyGain; // = 0.45,
+    float m_worleyAmplitude; // = 0.625
+
+    // The volumetric clouds gem limits noise textures to 512x512x512
+    // and also limits the smallest mip to be 4x4x4. Which means we'll need
+    // at most 8 mip levels:
+    // 0 -> 512
+    // 1 -> 256
+    // 2 -> 128
+    // 3 -> 64
+    // 4 -> 32
+    // 5 -> 16
+    // 6 -> 8
+    // 7 > 4
+    #define MAX_MIP_LEVELS 8
+    #define MIN_PIXEL_SIZE 4
+
+    // Defines width, height and depth in pixels for mip 0.
+    // The total number of mips to generate will be calculated
+    // from m_pixelSize
+    uint m_pixelSize;
+    RWTexture3D<float4> m_cloudTextureMips[MAX_MIP_LEVELS];
+
+    float3 GetNormalizedPointFromThreadIds(uint3 thread_id, uint pixelSize)
+    {
+        const float tW = (float)pixelSize;
+        const float tH = tW;
+        const float tD = tW;
+        //CloudTexturePassSrg::m_cloudTexture.GetDimensions(tW, tH, tD);
+
+
+        const float x = ((float)thread_id.x)/tW;
+        const float y = ((float)thread_id.y)/tH;
+        const float z = ((float)thread_id.z)/tD;
+        return float3(x, y, z);   
+    }
+};
+
+//float4 GetTextureColor(uint3 thread_id)
+//{
+//    float tW, tH, tD;
+//    CloudTexturePassSrg::m_cloudTexture.GetDimensions(tW, tH, tD);
+//
+//    float4 color = 0.0;
+//
+//    float redIntensity = ((float)thread_id.x)/tW;
+//    float greenIntensity = ((float)thread_id.y)/tH;
+//    float blueIntensity = ((float)thread_id.z)/tD;
+//
+//    float3 alphaV = float3(redIntensity, greenIntensity, blueIntensity);
+//    float alphaIntensity = clamp(length(alphaV), 0.0, 1.0);
+//
+//    color.r = redIntensity;
+//    color.g = greenIntensity;
+//    color.b = blueIntensity;
+//    color.a = alphaIntensity;
+//
+//    return color;
+//}
+
+
+[numthreads(4, 4, 4)]
+void MainCS(uint3 thread_id: SV_DispatchThreadID)
+{
+    const float frequency = round(clamp(CloudTexturePassSrg::m_frequency, 1.0, 10.0));
+    const int perlinOctaves = clamp(CloudTexturePassSrg::m_perlinOctaves, 1, 10);
+    const float perlinGain = clamp(CloudTexturePassSrg::m_perlinGain, 0.1, 2.0);
+    const float perlinAmplitude = clamp(CloudTexturePassSrg::m_perlinAmplitude, 0.1, 2.0);
+
+    const int worleyOctaves = clamp(CloudTexturePassSrg::m_worleyOctaves, 1, 10);
+    const float worleyGain = clamp(CloudTexturePassSrg::m_worleyGain, 0.1, 2.0);
+    const float worleyAmplitude = clamp(CloudTexturePassSrg::m_worleyAmplitude, 0.1, 2.0);
+
+    uint mipPixelSize = CloudTexturePassSrg::m_pixelSize;
+    uint mipLevel = 0;
+    while ((mipPixelSize >= MIN_PIXEL_SIZE) && (mipLevel < MAX_MIP_LEVELS))
+    {
+        uint3 threadIdForMip = thread_id / (mipLevel+1);
+        float3 input = CloudTexturePassSrg::GetNormalizedPointFromThreadIds(threadIdForMip, mipPixelSize);
+
+
+        float4 cloudChannels = 0.0;
+        cloudChannels.r = PerlinWorleyNoise(input, frequency, 
+                                            perlinOctaves, perlinGain, perlinAmplitude,
+                                            worleyOctaves, worleyGain, worleyAmplitude);
+        cloudChannels.gba = WorleyNoiseFbmForCloudsTriplet(input, frequency, worleyOctaves, worleyGain, worleyAmplitude);
+
+        CloudTexturePassSrg::m_cloudTextureMips[mipLevel][threadIdForMip] = cloudChannels;
+
+        mipLevel++;
+        mipPixelSize = (mipPixelSize >> 1);
+    }
+
+}
+

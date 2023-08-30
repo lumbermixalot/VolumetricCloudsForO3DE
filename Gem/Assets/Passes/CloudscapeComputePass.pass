@@ -1,0 +1,49 @@
+{
+    "Type": "JsonSerialization",
+    "Version": 1,
+    "ClassName": "PassAsset",
+    "ClassData": {
+        "PassTemplate": {
+            "Name": "CloudscapeComputePassTemplate",
+            "PassClass": "CloudscapeComputePass",
+            "Slots": [
+                //Input
+                {
+                    "Name": "InputDepthStencil",
+                    "SlotType": "Input",
+                    "ShaderInputName": "m_depthStencilTexture",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ImageViewDesc": {
+                        "AspectFlags": [
+                            "Depth"
+                        ]
+                    }
+                },
+                //Outputs
+                // We start with "NoBind" for all these attachments because the attachments
+                // are actually defined at runtime and owned by the CloudscapeFeatureProcessor.
+                {
+                    "Name": "Output0",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //"m_cloudscapeOut",
+                    "ShaderInputArrayIndex": "0"
+                },
+                {
+                    "Name": "Output1",
+                    "SlotType": "InputOutput",
+                    "ScopeAttachmentUsage": "Shader",
+                    "ShaderInputName": "NoBind", //"m_cloudscapeOut",
+                    "ShaderInputArrayIndex": "1"
+                }
+            ],
+            "PassData": {
+                "$type": "ComputePassData",
+                "ShaderAsset": {
+                    "FilePath": "Shaders/Cloudscape/CloudscapeCS.shader"
+                },
+                "BindViewSrg": true
+            }
+        }
+    }
+}
