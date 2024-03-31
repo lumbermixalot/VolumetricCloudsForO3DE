@@ -1,7 +1,7 @@
 {
   "Source": "CloudTextureViewer.azsl",
   "AddBuildArguments": {
-    "debug": true
+    "debug": false
   },
   "DepthStencilState": {
     "Depth": {

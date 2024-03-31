@@ -39,8 +39,8 @@ set(FILES
     Source/Renderer/Passes/CloudTextureComputePass.h
     Source/Renderer/Passes/CloudTextureComputeData.cpp
     Source/Renderer/Passes/CloudTextureComputeData.h
-    Source/Renderer/Passes/CloudscapeRenderPass.cpp
-    Source/Renderer/Passes/CloudscapeRenderPass.h
+    Source/Renderer/Passes/CloudscapeRasterPass.cpp
+    Source/Renderer/Passes/CloudscapeRasterPass.h
     Source/Renderer/Passes/CloudscapeComputePass.cpp
     Source/Renderer/Passes/CloudscapeComputePass.h
 )

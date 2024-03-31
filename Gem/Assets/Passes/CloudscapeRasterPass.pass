@@ -4,8 +4,8 @@
     "ClassName": "PassAsset",
     "ClassData": {
         "PassTemplate": {
-            "Name": "CloudscapeRenderPassTemplate",
-            "PassClass": "CloudscapeRenderPass",
+            "Name": "CloudscapeRasterPassTemplate",
+            "PassClass": "CloudscapeRasterPass",
             "Slots": [
                 //Input
                 {

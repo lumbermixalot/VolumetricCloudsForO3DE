@@ -21,8 +21,8 @@
                 "Path": "Passes/CloudscapeComputePass.pass"
             },
             {
-                "Name": "CloudscapeRenderPassTemplate", 
-                "Path": "Passes/CloudscapeRenderPass.pass"
+                "Name": "CloudscapeRasterPassTemplate", 
+                "Path": "Passes/CloudscapeRasterPass.pass"
             },
             {
                 "Name": "CloudscapeReprojectionComputePassTemplate", 

@@ -42,7 +42,7 @@ namespace VolumetricClouds
         CloudscapeFeatureProcessor(const CloudscapeFeatureProcessor&) = delete;
 
         friend class CloudscapeComputePass;
-        friend class CloudscapeRenderPass;
+        friend class CloudscapeRasterPass;
         //friend class DepthBufferCopyPass;
 
         static constexpr char LogName[] = "CloudscapeFeatureProcessor";
@@ -89,7 +89,7 @@ namespace VolumetricClouds
         // The passes managed by this feature processor.
         CloudscapeComputePass* m_cloudscapeComputePass = nullptr;
         AZ::RPI::ComputePass* m_cloudscapeReprojectionPass = nullptr;
-        CloudscapeRenderPass* m_cloudscapeRenderPass = nullptr;
+        CloudscapeRasterPass* m_cloudscapeRenderPass = nullptr;
 
         // Shader constants for m_cloudscapeReprojectionPass
         AZ::RHI::ShaderInputNameIndex m_pixelIndex4x4Index = "m_pixelIndex4x4";

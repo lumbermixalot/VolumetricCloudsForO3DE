@@ -3,8 +3,8 @@
     "Version": 1,
     "ClassName": "PassRequest",
     "ClassData": {
-        "Name": "CloudscapeRenderPass",
-        "TemplateName": "CloudscapeRenderPassTemplate",
+        "Name": "CloudscapeRasterPass",
+        "TemplateName": "CloudscapeRasterPassTemplate",
         "Enabled": true,
         "Connections": [
             // Inputs

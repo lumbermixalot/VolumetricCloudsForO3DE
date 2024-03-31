@@ -13,7 +13,7 @@
 #include <VolumetricClouds/VolumetricCloudsTypeIds.h>
 #include <Renderer/Passes/CloudTextureComputePass.h>
 #include <Renderer/Passes/CloudscapeComputePass.h>
-#include <Renderer/Passes/CloudscapeRenderPass.h>
+#include <Renderer/Passes/CloudscapeRasterPass.h>
 #include <Renderer/CloudTexturesComputeFeatureProcessor.h>
 #include <Renderer/CloudTexturesDebugViewerFeatureProcessor.h>
 #include <Renderer/CloudscapeFeatureProcessor.h>
@@ -78,7 +78,7 @@ namespace VolumetricClouds
         // Register volumetric clouds related custom passes
         passSystem->AddPassCreator(AZ::Name("CloudTextureComputePass"), &CloudTextureComputePass::Create);
         passSystem->AddPassCreator(AZ::Name("CloudscapeComputePass"), &CloudscapeComputePass::Create);
-        passSystem->AddPassCreator(AZ::Name("CloudscapeRenderPass"), &CloudscapeRenderPass::Create);
+        passSystem->AddPassCreator(AZ::Name("CloudscapeRasterPass"), &CloudscapeRasterPass::Create);
 
         // Setup handler for load pass templates mappings
         m_loadTemplatesHandler = AZ::RPI::PassSystemInterface::OnReadyLoadTemplatesEvent::Handler([this]() { this->LoadPassTemplateMappings(); });

@@ -25,7 +25,7 @@
 #include <Atom/RPI.Public/Image/ImageSystemInterface.h>
 
 #include <Renderer/Passes/CloudscapeComputePass.h>
-#include <Renderer/Passes/CloudscapeRenderPass.h>
+#include <Renderer/Passes/CloudscapeRasterPass.h>
 // #include <Renderer/Passes/DepthBufferCopyPass.h>
 #include "CloudscapeFeatureProcessor.h"
 
@@ -118,13 +118,13 @@ namespace VolumetricClouds
         }
 
 
-        AddPassRequestToRenderPipeline(renderPipeline, "Passes/CloudscapeRenderPassRequest.azasset", "TransparentPass", true /*before*/);
+        AddPassRequestToRenderPipeline(renderPipeline, "Passes/CloudscapeRasterPassRequest.azasset", "TransparentPass", true /*before*/);
         // Hold a reference to the render pass
         {
-            const auto passName = AZ::Name("CloudscapeRenderPass");
+            const auto passName = AZ::Name("CloudscapeRasterPass");
             AZ::RPI::PassFilter passFilter = AZ::RPI::PassFilter::CreateWithPassName(passName, renderPipeline);
             AZ::RPI::Pass* existingPass = AZ::RPI::PassSystemInterface::Get()->FindFirstPass(passFilter);
-            m_cloudscapeRenderPass = azrtti_cast<CloudscapeRenderPass*>(existingPass);
+            m_cloudscapeRenderPass = azrtti_cast<CloudscapeRasterPass*>(existingPass);
             if (!m_cloudscapeRenderPass)
             {
                 AZ_Error(LogName, false, "%s Failed to find as RenderPass: %s", __FUNCTION__, passName.GetCStr());

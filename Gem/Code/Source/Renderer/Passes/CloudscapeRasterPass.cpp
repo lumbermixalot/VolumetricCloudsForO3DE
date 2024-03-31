@@ -17,23 +17,23 @@
 #include <Atom/RHI/PipelineState.h>
 
 #include <Renderer/CloudscapeFeatureProcessor.h>
-#include "CloudscapeRenderPass.h"
+#include "CloudscapeRasterPass.h"
 
 namespace VolumetricClouds
 {
     
-    AZ::RPI::Ptr<CloudscapeRenderPass> CloudscapeRenderPass::Create(const AZ::RPI::PassDescriptor& descriptor)
+    AZ::RPI::Ptr<CloudscapeRasterPass> CloudscapeRasterPass::Create(const AZ::RPI::PassDescriptor& descriptor)
     {
-        AZ::RPI::Ptr<CloudscapeRenderPass> pass = aznew CloudscapeRenderPass(descriptor);
+        AZ::RPI::Ptr<CloudscapeRasterPass> pass = aznew CloudscapeRasterPass(descriptor);
         return AZStd::move(pass);
     }
     
-    CloudscapeRenderPass::CloudscapeRenderPass(const AZ::RPI::PassDescriptor& descriptor)
+    CloudscapeRasterPass::CloudscapeRasterPass(const AZ::RPI::PassDescriptor& descriptor)
         : AZ::RPI::FullscreenTrianglePass(descriptor)
     {
     }
     
-    void CloudscapeRenderPass::InitializeInternal()
+    void CloudscapeRasterPass::InitializeInternal()
     {
         AZ::RPI::FullscreenTrianglePass::InitializeInternal();
 
@@ -44,21 +44,21 @@ namespace VolumetricClouds
     }
 
 
-    void CloudscapeRenderPass::FrameBeginInternal(FramePrepareParams params)
+    void CloudscapeRasterPass::FrameBeginInternal(FramePrepareParams params)
     {
         AZ::RPI::FullscreenTrianglePass::FrameBeginInternal(params);
     }
 
 
-    void CloudscapeRenderPass::SetupFrameGraphDependencies(AZ::RHI::FrameGraphInterface frameGraph)
+    void CloudscapeRasterPass::SetupFrameGraphDependencies(AZ::RHI::FrameGraphInterface frameGraph)
     {
         AZ::RPI::FullscreenTrianglePass::SetupFrameGraphDependencies(frameGraph);
     }
 
     
-    void CloudscapeRenderPass::CompileResources(const AZ::RHI::FrameGraphCompileContext& context)
+    void CloudscapeRasterPass::CompileResources(const AZ::RHI::FrameGraphCompileContext& context)
     {
-       AZ_Assert(m_shaderResourceGroup != nullptr, "CloudscapeRenderPass %s has a null shader resource group when calling Compile.", GetPathName().GetCStr());
+       AZ_Assert(m_shaderResourceGroup != nullptr, "CloudscapeRasterPass %s has a null shader resource group when calling Compile.", GetPathName().GetCStr());
 
        if (m_srgNeedsUpdate)
        {
@@ -70,9 +70,9 @@ namespace VolumetricClouds
     }
     
     
-    void CloudscapeRenderPass::BuildCommandListInternal(const AZ::RHI::FrameGraphExecuteContext& context)
+    void CloudscapeRasterPass::BuildCommandListInternal(const AZ::RHI::FrameGraphExecuteContext& context)
     {
-        //AZ_Assert(m_shaderResourceGroup != nullptr, "CloudscapeRenderPass %s has a null shader resource group when calling Execute.", GetPathName().GetCStr());
+        //AZ_Assert(m_shaderResourceGroup != nullptr, "CloudscapeRasterPass %s has a null shader resource group when calling Execute.", GetPathName().GetCStr());
         //
         //AZ::RHI::CommandList* commandList = context.GetCommandList();
         //
@@ -88,7 +88,7 @@ namespace VolumetricClouds
     }
 
 
-    void CloudscapeRenderPass::UpdateFrameCounter(uint32_t frameCounter)
+    void CloudscapeRasterPass::UpdateFrameCounter(uint32_t frameCounter)
     {
         m_cloudscapeTextureIndex = frameCounter % 2;
         m_srgNeedsUpdate = true;

@@ -24,23 +24,23 @@ namespace VolumetricClouds
     /**
      *  This pass merges the cloud pixels into the main render target.
      */
-    class CloudscapeRenderPass final
+    class CloudscapeRasterPass final
         : public AZ::RPI::FullscreenTrianglePass
     {
     public:
-        AZ_RTTI(CloudscapeRenderPass, "{1DE6A41D-03CE-47D2-B8BC-75C863F14764}", AZ::RPI::FullscreenTrianglePass);
-        AZ_CLASS_ALLOCATOR(CloudscapeRenderPass, AZ::SystemAllocator);
+        AZ_RTTI(CloudscapeRasterPass, "{1DE6A41D-03CE-47D2-B8BC-75C863F14764}", AZ::RPI::FullscreenTrianglePass);
+        AZ_CLASS_ALLOCATOR(CloudscapeRasterPass, AZ::SystemAllocator);
     
     
-        virtual ~CloudscapeRenderPass() = default;
+        virtual ~CloudscapeRasterPass() = default;
     
         //! Creates a LookModificationPass
-        static AZ::RPI::Ptr<CloudscapeRenderPass> Create(const AZ::RPI::PassDescriptor& descriptor);
+        static AZ::RPI::Ptr<CloudscapeRasterPass> Create(const AZ::RPI::PassDescriptor& descriptor);
 
         void UpdateFrameCounter(uint32_t frameCounter);
     
     protected:
-        CloudscapeRenderPass(const AZ::RPI::PassDescriptor& descriptor);
+        CloudscapeRasterPass(const AZ::RPI::PassDescriptor& descriptor);
         
         //! Pass behavior overrides
         void InitializeInternal() override;
