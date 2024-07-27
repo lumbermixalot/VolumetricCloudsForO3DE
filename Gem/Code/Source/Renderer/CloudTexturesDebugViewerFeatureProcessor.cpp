@@ -375,7 +375,7 @@ namespace VolumetricClouds
         drawLinear.m_instanceCount = 1;
         drawLinear.m_instanceOffset = 0;
 
-        AZ::RHI::DrawPacketBuilder drawPacketBuilder;
+        AZ::RHI::DrawPacketBuilder drawPacketBuilder{ AZ::RHI::MultiDevice::AllDevices };
         drawPacketBuilder.Begin(nullptr);
         drawPacketBuilder.SetDrawArguments(drawLinear);
         drawPacketBuilder.AddShaderResourceGroup(drawSrg->GetRHIShaderResourceGroup());
