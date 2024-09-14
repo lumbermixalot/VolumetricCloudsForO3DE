@@ -70,6 +70,12 @@ namespace VolumetricClouds
 
         AZ::Data::AssetBus::Handler::BusConnect(shaderAssetId);
 
+        // Initialize the common Geometry View
+        AZ::RHI::DrawLinear drawLinear;
+        drawLinear.m_vertexCount = 6;
+        drawLinear.m_vertexOffset = 0;
+        m_commonGeometryView.SetDrawArguments(drawLinear);
+
         // Whether the shader asset is ready or not. OnAssetReady is always called. 
         // OnAssetReady will call ActivateInternal()
     }
@@ -351,7 +357,7 @@ namespace VolumetricClouds
     {
         if(m_meshPipelineState)
         {
-            cloudTextureInstance.m_drawPacket = BuildDrawPacket(m_meshPipelineState, m_drawListTag, 6, cloudTextureInstance.m_drawSrg);
+            cloudTextureInstance.m_drawPacket = BuildDrawPacket(m_meshPipelineState, m_drawListTag, cloudTextureInstance.m_drawSrg);
         }
     }
 
@@ -366,18 +372,11 @@ namespace VolumetricClouds
     AZ::RHI::ConstPtr<AZ::RHI::DrawPacket> CloudTexturesDebugViewerFeatureProcessor::BuildDrawPacket(
                 const AZ::RPI::Ptr<AZ::RPI::PipelineStateForDraw>& pipelineState,
                 const AZ::RHI::DrawListTag& drawListTag,
-                uint32_t vertexCount,
                 const AZ::Data::Instance<AZ::RPI::ShaderResourceGroup>& drawSrg)
     {
-        AZ::RHI::DrawLinear drawLinear;
-        drawLinear.m_vertexCount = vertexCount;
-        drawLinear.m_vertexOffset = 0;
-        drawLinear.m_instanceCount = 1;
-        drawLinear.m_instanceOffset = 0;
-
         AZ::RHI::DrawPacketBuilder drawPacketBuilder{ AZ::RHI::MultiDevice::AllDevices };
         drawPacketBuilder.Begin(nullptr);
-        drawPacketBuilder.SetDrawArguments(drawLinear);
+        drawPacketBuilder.SetGeometryView(&m_commonGeometryView);
         drawPacketBuilder.AddShaderResourceGroup(drawSrg->GetRHIShaderResourceGroup());
 
         AZ::RHI::DrawPacketBuilder::DrawRequest drawRequest;

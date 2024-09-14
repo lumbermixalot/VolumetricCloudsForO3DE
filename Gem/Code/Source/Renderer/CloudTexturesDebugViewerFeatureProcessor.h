@@ -105,7 +105,6 @@ namespace VolumetricClouds
         AZ::RHI::ConstPtr<AZ::RHI::DrawPacket> BuildDrawPacket(
             const AZ::RPI::Ptr<AZ::RPI::PipelineStateForDraw>& pipelineState,
             const AZ::RHI::DrawListTag& drawListTag,
-            uint32_t vertexCount,
             const AZ::Data::Instance<AZ::RPI::ShaderResourceGroup>& srg);
 
         static constexpr const char* FeatureProcessorName = "CloudTexturesDebugViewerFeatureProcessor";
@@ -119,6 +118,8 @@ namespace VolumetricClouds
         AZ::RPI::Ptr<AZ::RPI::PipelineStateForDraw> m_meshPipelineState;
 
         AZ::RHI::DrawListTag m_drawListTag;
+        // Common to all CloudTextureInstance(s)
+        AZ::RHI::GeometryView m_commonGeometryView;
 
         AZStd::unordered_map<AZ::EntityId, CloudTextureInstance> m_cloudTextureInstances;
 
