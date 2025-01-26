@@ -10,8 +10,8 @@
  
 #include <Atom/Features/ColorManagement/TransformColor.azsli>
 //#include <Atom/Features/SrgSemantics.azsli>
-#include <scenesrg.srgi>
-#include <viewsrg.srgi>
+#include <scenesrg_all.srgi>
+#include <viewsrg_all.srgi>
 
 option enum class VisibleChannel {PerlinWorley, WorleyFbm1, WorleyFbm2, WorleyFbm4, AllChannels} o_visible_channel = VisibleChannel::PerlinWorley;
 
